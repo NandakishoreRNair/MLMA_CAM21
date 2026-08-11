@@ -1,0 +1,128 @@
+=======================================================
+LDA SELECTED FEATURES (Phase: stair)
+=======================================================
+
+Model  : LDA (Linear Discriminant Analysis)
+Method : Sequential Forward Selection + Leave-One-Trial-Out CV
+Stop   : no improvement for 5 consecutive iterations
+Total features available : 256
+Features selected        : 69
+
+Selected feature indices:
+[
+ 19, 4, 3, 157, 67, 222, 178, 149, 13, 12
+ 204, 224, 233, 190, 174, 169, 199, 108, 21, 240
+ 140, 164, 170, 153, 145, 63, 158, 223, 78, 144
+ 10, 148, 243, 173, 183, 2, 168, 175, 210, 246
+ 218, 58, 249, 189, 244, 225, 160, 230, 187, 5
+ 242, 250, 76, 77, 14, 209, 25, 217, 109, 237
+ 84, 59, 57, 155, 229, 16, 200, 197, 66
+]
+
+Feature importance (by selection order):
+   1. Feature  19  (Initial rank: 58)
+   2. Feature   4  (Initial rank: 14)
+   3. Feature   3  (Initial rank: 36)
+   4. Feature 157  (Initial rank: 85)
+   5. Feature  67  (Initial rank: 84)
+   6. Feature 222  (Initial rank: 42)
+   7. Feature 178  (Initial rank: 34)
+   8. Feature 149  (Initial rank: 33)
+   9. Feature  13  (Initial rank: 3)
+  10. Feature  12  (Initial rank: 92)
+  11. Feature 204  (Initial rank: 16)
+  12. Feature 224  (Initial rank: 60)
+  13. Feature 233  (Initial rank: 86)
+  14. Feature 190  (Initial rank: 22)
+  15. Feature 174  (Initial rank: 44)
+  16. Feature 169  (Initial rank: 31)
+  17. Feature 199  (Initial rank: 32)
+  18. Feature 108  (Initial rank: 64)
+  19. Feature  21  (Initial rank: 100)
+  20. Feature 240  (Initial rank: 19)
+  21. Feature 140  (Initial rank: 45)
+  22. Feature 164  (Initial rank: 87)
+  23. Feature 170  (Initial rank: 8)
+  24. Feature 153  (Initial rank: 38)
+  25. Feature 145  (Initial rank: 69)
+  26. Feature  63  (Initial rank: 83)
+  27. Feature 158  (Initial rank: 28)
+  28. Feature 223  (Initial rank: 88)
+  29. Feature  78  (Initial rank: 99)
+  30. Feature 144  (Initial rank: 72)
+  ... and 39 more features
+
+
+Selection history:
+Iteration  Feature  Accuracy
+---------  -------  --------
+        1       19  0.455622
+        2        4  0.537749
+        3        3  0.564297
+        4      157  0.582404
+        5       67  0.595399
+        6      222  0.611856
+        7      178  0.622313
+        8      149  0.630851
+        9       13  0.637652
+       10       12  0.641117
+       11      204  0.645713
+       12      224  0.649150
+       13      233  0.653465
+       14      190  0.657267
+       15      174  0.663887
+       16      169  0.666572
+       17      199  0.674286
+       18      108  0.676053
+       19       21  0.677077
+       20      240  0.681974
+       21      140  0.684592
+       22      164  0.692177
+       23      170  0.693144
+       24      153  0.694196
+       25      145  0.696607
+       26       63  0.697570
+       27      158  0.699401
+       28      223  0.701072
+       29       78  0.702731
+       30      144  0.702942
+       31       10  0.703865
+       32      148  0.704827
+       33      243  0.706751
+       34      173  0.708114
+       35      183  0.708345
+       36        2  0.709393
+       37      168  0.710331
+       38      175  0.711384
+       39      210  0.711502
+       40      246  0.712362
+       41      218  0.713519
+       42       58  0.714186
+       43      249  0.714792
+       44      189  0.715591
+       45      244  0.717998
+       46      225  0.720197
+       47      160  0.722446
+       48      230  0.724624
+       49      187  0.731068
+       50        5  0.733558
+       51      242  0.735888
+       52      250  0.736146
+       53       76  0.738248
+       54       77  0.738092
+       55       14  0.738133
+       56      209  0.740141
+       57       25  0.739810
+       58      217  0.739903
+       59      109  0.740573
+       60      237  0.740750
+       61       84  0.743298
+       62       59  0.743727
+       63       57  0.744069
+       64      155  0.747447
+       65      229  0.747619
+       66       16  0.746710
+       67      200  0.746512
+       68      197  0.745910
+       69       66  0.745401
+       70        0  0.000000

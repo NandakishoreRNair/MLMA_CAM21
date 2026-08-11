@@ -1,0 +1,384 @@
+%% ========================================================
+%% FEATURE SELECTION: RANDOM FOREST MODEL
+%% Sequential Forward Selection
+%% Leave-One-Trial-Out Cross Validation
+%% ========================================================
+
+clear all; close all; clc;
+
+%% ========================================================
+%% USER SETTINGS - CHOOSE ground
+%% ========================================================
+
+ground_to_test = 'stair';
+
+fprintf('=======================================================\n');
+fprintf('RANDOM FOREST FEATURE SELECTION\n');
+fprintf('Ground: %s\n', ground_to_test);
+fprintf('=======================================================\n\n');
+
+%% ========================================================
+%% SETUP PATHS
+%% ========================================================
+
+base_folder = sprintf('D:\\CAM21\\data\\Classification\\%s\\', ground_to_test);
+
+subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17', 'ab18', ...
+            'ab19', 'ab20', 'ab21', 'ab23', 'ab24', 'ab27', 'ab28'};
+
+output_folder = sprintf('D:\\CAM21\\code\\my_code\\result_feature_selection\\%s\\', ground_to_test);
+if ~exist(output_folder, 'dir')
+    mkdir(output_folder);
+end
+
+%% ========================================================
+%% PARAMETERS
+%% ========================================================
+
+MAX_FEATURES_TARGET      = 150;
+MIN_FEATURES_FOR_INITIAL = 100;
+
+% Random Forest parameters
+NUM_TREES = 50;   % number of trees per fold — increase for stability, decrease for speed
+
+% Early stopping
+PATIENCE        = 5;      % consecutive iterations with no improvement before stop
+MIN_IMPROVEMENT = 1e-4;   % minimum accuracy gain to count as improvement
+
+fprintf('Configuration:\n');
+fprintf('  Model            : Random Forest (%d trees)\n', NUM_TREES);
+fprintf('  Target features  : %d\n', MAX_FEATURES_TARGET);
+fprintf('  ground            : %s\n', ground_to_test);
+fprintf('  Patience         : %d iterations\n', PATIENCE);
+fprintf('  Min improvement  : %.4f\n', MIN_IMPROVEMENT);
+fprintf('  Base folder      : %s\n', base_folder);
+fprintf('  Output folder    : %s\n\n', output_folder);
+
+%% ========================================================
+%% STEP 1: LOAD AND COMBINE DATA
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 1: LOADING DATA FROM ALL SUBJECTS\n');
+fprintf('=======================================================\n\n');
+
+X_combined      = [];
+y_combined      = {};
+trial_combined  = [];
+subject_indices = [];
+
+for subj_idx = 1:length(subjects)
+    subject = subjects{subj_idx};
+
+    input_file  = fullfile(base_folder, ['full_' subject '_input_4.mat']);
+    output_file = fullfile(base_folder, ['full_' subject '_output_4.mat']);
+
+    if ~isfile(input_file) || ~isfile(output_file)
+        fprintf('WARNING: Files not found for %s. Skipping...\n', subject);
+        continue;
+    end
+
+    try
+        input_data  = load(input_file);
+        output_data = load(output_file);
+
+        X            = table2array(input_data.alldata);
+        output_table = output_data.alldata;
+
+        labels_col = output_table.labels_feat_last;
+        trial_col  = output_table.trial_feat_last;
+
+        % Merge turn1 and turn2 into single 'turn' class
+        for i = 1:length(labels_col)
+            if strcmp(labels_col{i}, 'turn1') || strcmp(labels_col{i}, 'turn2')
+                labels_col{i} = 'turn';
+            end
+        end
+
+        X_combined      = [X_combined;      X];
+        y_combined      = [y_combined;      labels_col];
+        trial_combined  = [trial_combined;  trial_col];
+        subject_indices = [subject_indices; repmat(subj_idx, size(X,1), 1)];
+
+        fprintf('Loaded: %s  (%d samples, %d features)\n', ...
+            subject, size(X,1), size(X,2));
+
+    catch ME
+        fprintf('ERROR loading %s: %s\n', subject, ME.message);
+    end
+end
+
+fprintf('\nTotal combined data: %d samples, %d features\n', ...
+    size(X_combined,1), size(X_combined,2));
+
+% Convert labels to numeric
+unique_labels = unique(y_combined);
+label_map     = containers.Map(unique_labels, 1:length(unique_labels));
+
+y_combined_numeric = zeros(length(y_combined), 1);
+for i = 1:length(y_combined)
+    y_combined_numeric(i) = label_map(y_combined{i});
+end
+
+num_classes = length(unique_labels);
+fprintf('Classes: %d\n\n', num_classes);
+
+%% ========================================================
+%% STEP 2: FEATURE RANKING
+%%   Global z-score used for ranking ONLY.
+%%   RF does not require normalisation, but we normalise
+%%   for the ranking score computation only.
+%%   No normalisation is applied inside the CV folds
+%%   since RF is scale-invariant.
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 2: RANKING FEATURES\n');
+fprintf('=======================================================\n\n');
+
+fprintf('Computing feature scores (variance x label-correlation)...\n\n');
+
+mu_global    = mean(X_combined);
+sigma_global = std(X_combined);
+sigma_global(sigma_global == 0) = 1;
+X_norm_rank = (X_combined - mu_global) ./ sigma_global;  % for ranking only
+
+feature_scores = zeros(size(X_combined, 2), 1);
+tic;
+
+for feat = 1:size(X_combined, 2)
+    if mod(feat, 50) == 0 || feat == 1
+        fprintf('[%s] Feature %3d / %d  (Elapsed: %.1f sec)\n', ...
+            datetime('now','Format','HH:mm:ss'), feat, size(X_combined,2), toc);
+    end
+    var_score            = var(X_norm_rank(:, feat));
+    corr_with_labels     = abs(corr(X_norm_rank(:, feat), y_combined_numeric));
+    feature_scores(feat) = var_score * corr_with_labels;
+end
+
+fprintf('[%s] Feature ranking complete!\n\n', datetime('now','Format','HH:mm:ss'));
+
+[sorted_scores, ranked_features] = sort(feature_scores, 'descend');
+
+fprintf('Top 20 ranked features:\n');
+for i = 1:min(20, length(ranked_features))
+    fprintf('  Rank %2d: Feature %3d  (Score = %.6f)\n', ...
+        i, ranked_features(i), sorted_scores(i));
+end
+fprintf('\n');
+
+%% ========================================================
+%% STEP 3: RF FEATURE SELECTION  (Leave-One-Trial-Out CV)
+%%
+%%   NOTE: Random Forest is scale-invariant (tree splits
+%%   depend only on rank order of values), so per-fold
+%%   normalisation is NOT needed and is intentionally
+%%   omitted. This also avoids any normalisation leakage.
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 3: RANDOM FOREST FEATURE SELECTION\n');
+fprintf('Sequential Forward Selection + Leave-One-Trial-Out CV\n');
+fprintf('Early stopping: patience=%d, min_improvement=%.4f\n', ...
+    PATIENCE, MIN_IMPROVEMENT);
+fprintf('=======================================================\n\n');
+
+unique_trials = unique(trial_combined);
+num_folds     = length(unique_trials);
+
+% Column vectors throughout to avoid shape-mismatch errors
+selected_features  = zeros(0, 1);
+remaining_features = ranked_features(1:min(MIN_FEATURES_FOR_INITIAL, length(ranked_features)));
+
+% Pre-allocate history
+history_feature  = zeros(MAX_FEATURES_TARGET, 1);
+history_accuracy = zeros(MAX_FEATURES_TARGET, 1);
+
+% Early-stopping state
+best_accuracy_so_far = -inf;
+no_improve_count     = 0;
+stop_reason          = 'max features reached';
+
+iteration = 0;
+tic;
+
+while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_features)
+    iteration = iteration + 1;
+
+    if iteration == 1 || mod(iteration, 1) == 0
+        fprintf('[%s] Iter %3d | selected: %3d | patience: %d/%d  (%.1f sec)\n', ...
+            datetime('now','Format','HH:mm:ss'), iteration, ...
+            length(selected_features), no_improve_count, PATIENCE, toc);
+    end
+
+    best_candidate_feature  = -1;
+    best_candidate_accuracy = -inf;
+
+    for k = 1:length(remaining_features)
+        feat = remaining_features(k);
+
+        current_features = [selected_features; feat];
+        X_subset = X_combined(:, current_features);   % raw data — RF is scale-invariant
+
+        fold_accuracies = zeros(num_folds, 1);
+        valid_fold      = false(num_folds, 1);
+
+        for fold = 1:num_folds
+            test_trial = unique_trials(fold);
+
+            train_mask = trial_combined ~= test_trial;
+            test_mask  = trial_combined == test_trial;
+
+            X_train = X_subset(train_mask, :);
+            y_train = y_combined_numeric(train_mask);
+            X_test  = X_subset(test_mask,  :);
+            y_test  = y_combined_numeric(test_mask);
+
+            % No normalisation needed — RF is scale-invariant
+            % (tree split thresholds are rank-based, not magnitude-based)
+
+            try
+                rf_model = TreeBagger(NUM_TREES, X_train, y_train, ...
+                                      'Method',       'classification', ...
+                                      'OOBPrediction', 'off');  % off = faster in CV
+
+                y_pred_cell = predict(rf_model, X_test);
+
+                % TreeBagger returns a cell array of strings — convert to numeric
+                y_pred = str2double(y_pred_cell);
+
+                fold_accuracies(fold) = sum(y_pred == y_test) / length(y_test);
+                valid_fold(fold)      = true;
+
+            catch ME
+                fprintf('Candidate %d, Fold %d failed: %s\n', k, fold, ME.message);
+            end
+        end
+
+        if any(valid_fold)
+            avg_acc = mean(fold_accuracies(valid_fold));
+            if avg_acc > best_candidate_accuracy
+                best_candidate_accuracy = avg_acc;
+                best_candidate_feature  = feat;
+            end
+        end
+    end
+
+    % No valid candidate at all
+    if best_candidate_feature == -1
+        stop_reason = 'no valid candidate (all folds errored)';
+        fprintf('[%s] Iter %3d: No valid candidate. Stopping.\n', ...
+            datetime('now','Format','HH:mm:ss'), iteration);
+        break;
+    end
+
+    % Check for meaningful improvement
+    improvement = best_candidate_accuracy - best_accuracy_so_far;
+
+    if improvement >= MIN_IMPROVEMENT
+        best_accuracy_so_far = best_candidate_accuracy;
+        no_improve_count     = 0;
+    else
+        no_improve_count = no_improve_count + 1;
+        fprintf('[%s] Iter %3d: No improvement (gain=%.5f, patience %d/%d)\n', ...
+            datetime('now','Format','HH:mm:ss'), iteration, ...
+            improvement, no_improve_count, PATIENCE);
+
+        if no_improve_count >= PATIENCE
+            stop_reason = sprintf('no improvement for %d consecutive iterations', PATIENCE);
+            fprintf('[%s] Early stopping triggered.\n', ...
+                datetime('now','Format','HH:mm:ss'));
+            break;
+        end
+    end
+
+    % Accept best candidate
+    selected_features  = [selected_features; best_candidate_feature];
+    remaining_features = remaining_features(remaining_features ~= best_candidate_feature);
+
+    history_feature(iteration)  = best_candidate_feature;
+    history_accuracy(iteration) = best_candidate_accuracy;
+end
+
+% Trim history arrays
+history_feature  = history_feature(1:iteration);
+history_accuracy = history_accuracy(1:iteration);
+
+fprintf('\n[%s] RF feature selection complete!\n', datetime('now','Format','HH:mm:ss'));
+fprintf('Stop reason    : %s\n', stop_reason);
+fprintf('Total selected : %d features\n\n', length(selected_features));
+
+%% ========================================================
+%% STEP 4: SAVE RESULTS
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 4: SAVING RESULTS\n');
+fprintf('=======================================================\n\n');
+
+txt_filename = fullfile(output_folder, 'RF_selected_features.txt');
+fid = fopen(txt_filename, 'w');
+
+fprintf(fid, '=======================================================\n');
+fprintf(fid, 'RANDOM FOREST SELECTED FEATURES (ground: %s)\n', ground_to_test);
+fprintf(fid, '=======================================================\n\n');
+fprintf(fid, 'Model  : Random Forest (%d trees per fold)\n', NUM_TREES);
+fprintf(fid, 'Method : Sequential Forward Selection + Leave-One-Trial-Out CV\n');
+fprintf(fid, 'Stop   : %s\n', stop_reason);
+fprintf(fid, 'Total features available : 256\n');
+fprintf(fid, 'Features selected        : %d\n\n', length(selected_features));
+
+fprintf(fid, 'Selected feature indices:\n[\n');
+for j = 1:length(selected_features)
+    if mod(j, 10) == 0 || j == length(selected_features)
+        fprintf(fid, ' %d\n', selected_features(j));
+    else
+        fprintf(fid, ' %d,', selected_features(j));
+    end
+end
+fprintf(fid, ']\n\n');
+
+fprintf(fid, 'Feature importance (by selection order):\n');
+for j = 1:min(30, length(selected_features))
+    feat = selected_features(j);
+    fprintf(fid, '  %2d. Feature %3d  (Initial rank: %d)\n', ...
+        j, feat, find(ranked_features == feat, 1));
+end
+if length(selected_features) > 30
+    fprintf(fid, '  ... and %d more features\n', length(selected_features) - 30);
+end
+
+fprintf(fid, '\n\nSelection history:\n');
+fprintf(fid, 'Iteration  Feature  Accuracy\n');
+fprintf(fid, '---------  -------  --------\n');
+for j = 1:length(history_feature)
+    fprintf(fid, '%9d  %7d  %.6f\n', j, history_feature(j), history_accuracy(j));
+end
+
+fclose(fid);
+fprintf('Saved: %s\n', txt_filename);
+
+mat_filename = fullfile(output_folder, 'RF_selected_features.mat');
+features = selected_features;
+save(mat_filename, 'features', 'history_feature', 'history_accuracy');
+fprintf('Saved: %s\n\n', mat_filename);
+
+%% ========================================================
+%% STEP 5: SUMMARY
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('SUMMARY — RANDOM FOREST\n');
+fprintf('=======================================================\n\n');
+fprintf('ground             : %s\n', ground_to_test);
+fprintf('Features selected : %d / 256\n', length(selected_features));
+fprintf('Iterations run    : %d\n', iteration);
+fprintf('Stop reason       : %s\n', stop_reason);
+if ~isempty(history_accuracy)
+    fprintf('Final accuracy    : %.4f\n', history_accuracy(end));
+    fprintf('Best accuracy     : %.4f\n', max(history_accuracy));
+end
+fprintf('\nOutput saved to: %s\n', output_folder);
+fprintf('\n=======================================================\n');
+fprintf('RANDOM FOREST FEATURE SELECTION COMPLETE!\n');
+fprintf('=======================================================\n');

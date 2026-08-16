@@ -1,0 +1,104 @@
+=======================================================
+DBN SELECTED FEATURES (Ground: levelground)
+=======================================================
+
+Method : Sequential Forward Selection + Leave-One-Trial-Out CV
+Stop   : no improvement for 5 consecutive iterations
+Total features available : 256
+Features selected        : 48
+
+Selected feature indices:
+[
+ 3, 12, 33, 155, 187, 245, 37, 5, 19, 180
+ 185, 255, 189, 149, 230, 175, 145, 254, 39, 169
+ 164, 213, 107, 194, 163, 198, 229, 205, 18, 223
+ 139, 25, 36, 40, 127, 190, 210, 28, 158, 13
+ 15, 150, 250, 20, 144, 239, 218, 209
+]
+
+Feature importance (by selection order):
+   1. Feature   3  (Initial rank: 3)
+   2. Feature  12  (Initial rank: 61)
+   3. Feature  33  (Initial rank: 92)
+   4. Feature 155  (Initial rank: 71)
+   5. Feature 187  (Initial rank: 1)
+   6. Feature 245  (Initial rank: 67)
+   7. Feature  37  (Initial rank: 44)
+   8. Feature   5  (Initial rank: 2)
+   9. Feature  19  (Initial rank: 91)
+  10. Feature 180  (Initial rank: 23)
+  11. Feature 185  (Initial rank: 33)
+  12. Feature 255  (Initial rank: 41)
+  13. Feature 189  (Initial rank: 5)
+  14. Feature 149  (Initial rank: 11)
+  15. Feature 230  (Initial rank: 9)
+  16. Feature 175  (Initial rank: 36)
+  17. Feature 145  (Initial rank: 59)
+  18. Feature 254  (Initial rank: 79)
+  19. Feature  39  (Initial rank: 81)
+  20. Feature 169  (Initial rank: 73)
+  21. Feature 164  (Initial rank: 97)
+  22. Feature 213  (Initial rank: 55)
+  23. Feature 107  (Initial rank: 65)
+  24. Feature 194  (Initial rank: 68)
+  25. Feature 163  (Initial rank: 22)
+  26. Feature 198  (Initial rank: 35)
+  27. Feature 229  (Initial rank: 87)
+  28. Feature 205  (Initial rank: 17)
+  29. Feature  18  (Initial rank: 78)
+  30. Feature 223  (Initial rank: 20)
+  ... and 18 more features
+
+
+Selection history:
+Iteration  Feature  Accuracy
+---------  -------  --------
+        1        3  0.468697
+        2       12  0.511224
+        3       33  0.532011
+        4      155  0.549736
+        5      187  0.584233
+        6      245  0.598928
+        7       37  0.610764
+        8        5  0.622002
+        9       19  0.639621
+       10      180  0.653915
+       11      185  0.657897
+       12      255  0.665854
+       13      189  0.671100
+       14      149  0.674128
+       15      230  0.677087
+       16      175  0.684724
+       17      145  0.688248
+       18      254  0.691892
+       19       39  0.694197
+       20      169  0.695004
+       21      164  0.695517
+       22      213  0.695878
+       23      107  0.696866
+       24      194  0.699530
+       25      163  0.700705
+       26      198  0.701722
+       27      229  0.701714
+       28      205  0.701616
+       29       18  0.703051
+       30      223  0.704009
+       31      139  0.704114
+       32       25  0.704705
+       33       36  0.707463
+       34       40  0.707811
+       35      127  0.709019
+       36      190  0.709976
+       37      210  0.711821
+       38       28  0.713074
+       39      158  0.715702
+       40       13  0.718176
+       41       15  0.719728
+       42      150  0.723596
+       43      250  0.725291
+       44       20  0.726971
+       45      144  0.726896
+       46      239  0.726732
+       47      218  0.726679
+       48      209  0.726376
+       49        0  0.000000

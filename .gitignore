@@ -1,0 +1,9 @@
+
+
+# Dataset / large data
+Classification/
+Classification.zip
+
+# OS files
+.DS_Store
+Thumbs.db

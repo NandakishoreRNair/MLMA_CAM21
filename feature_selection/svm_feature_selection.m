@@ -8,7 +8,8 @@ clear all; close all; clc;
 
 %%parallelPool 
 if isempty(gcp('nocreate'))
-    parpool('local', 2);
+    c = parcluster('local');
+    parpool('local', c.NumWorkers);  
 end
 
 %% ========================================================
@@ -25,13 +26,13 @@ fprintf('=======================================================\n\n');
 %% ========================================================
 %% SETUP PATHS
 %% ========================================================
+%% /home/eeiww/ut55iqoh/MLMA_CAM21
+%%base_folder = sprintf('D:\\CAM21\\data\\Classification\\%s\\', ground_to_test);
+base_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/Classification/%s/', ground_to_test);
 
-base_folder = sprintf('D:\\CAM21\\data\\Classification\\%s\\', ground_to_test);
+subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17'};
 
-subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17', 'ab18', ...
-            'ab19', 'ab20', 'ab21', 'ab23', 'ab24', 'ab27', 'ab28'};
-
-output_folder = sprintf('D:\\CAM21\\code\\my_code\\result_feature_selection\\%s\\', ground_to_test);
+output_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/result_feature_selection/%s/', ground_to_test);
 if ~exist(output_folder, 'dir')
     mkdir(output_folder);
 end
@@ -232,33 +233,33 @@ while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_feat
         valid_fold      = false(num_folds, 1);
 
         parfor fold = 1:num_folds_par
-        test_trial = unique_trials_par(fold);
-        train_mask = trial_par ~= test_trial;
-        test_mask  = trial_par == test_trial;
+            test_trial = unique_trials_par(fold);
+            train_mask = trial_par ~= test_trial;
+            test_mask  = trial_par == test_trial;
 
         % Slice X here inside parfor (was missing before)
-        X_train = X_subset(train_mask, :);
-        X_test  = X_subset(test_mask,  :);
-        y_train = y_numeric_par(train_mask);
-        y_test  = y_numeric_par(test_mask);
+            X_train = X_subset(train_mask, :);
+            X_test  = X_subset(test_mask,  :);
+            y_train = y_numeric_par(train_mask);
+            y_test  = y_numeric_par(test_mask);
 
         % Normalise using training statistics ONLY (no leakage)
-        mu_tr    = mean(X_train);
-        sigma_tr = std(X_train);
-        sigma_tr(sigma_tr == 0) = 1;
-        X_train = (X_train - mu_tr) ./ sigma_tr;
-        X_test  = (X_test  - mu_tr) ./ sigma_tr;
+            mu_tr    = mean(X_train);
+            sigma_tr = std(X_train);
+            sigma_tr(sigma_tr == 0) = 1;
+            X_train = (X_train - mu_tr) ./ sigma_tr;
+            X_test  = (X_test  - mu_tr) ./ sigma_tr;
 
-        try
-            svm_model = fitcecoc(X_train, y_train, 'Learners', svm_tmpl, ...
+            try
+                svm_model = fitcecoc(X_train, y_train, 'Learners', svm_tmpl, ...
                              'Coding', 'onevsone','Options', statset('UseParallel', false));
-            y_pred = predict(svm_model, X_test);
+                y_pred = predict(svm_model, X_test);
 
-            fold_accuracies(fold) = sum(y_pred == y_test) / length(y_test);
-            valid_fold(fold)      = true;
+                fold_accuracies(fold) = sum(y_pred == y_test) / length(y_test);
+                valid_fold(fold)      = true;
 
-        catch ME
-            fprintf('Fold %d failed: %s\n', fold, ME.message);
+            catch ME
+                fprintf('Fold %d failed: %s\n', fold, ME.message);
         end
     end
 
@@ -305,6 +306,20 @@ while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_feat
 
     history_feature(iteration)  = best_candidate_feature;
     history_accuracy(iteration) = best_candidate_accuracy;
+
+    % ===== Checkpoint every 10 iterations =====
+    if mod(iteration,10)==0
+        save(fullfile(output_folder,'checkpoint.mat'), ...
+            'selected_features', ...
+            'remaining_features', ...
+            'history_feature', ...
+            'history_accuracy', ...
+            'iteration', ...
+            'best_accuracy_so_far', ...
+            'no_improve_count');
+            fprintf('[%s] Checkpoint saved at iteration %d\n', ...
+            datetime('now','Format','HH:mm:ss'), iteration);
+    end
 end
 
 % Trim history arrays

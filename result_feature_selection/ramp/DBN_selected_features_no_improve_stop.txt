@@ -1,0 +1,128 @@
+=======================================================
+DBN SELECTED FEATURES (Ground: ramp)
+=======================================================
+
+Method : Sequential Forward Selection + Leave-One-Trial-Out CV
+Stop   : no improvement for 5 consecutive iterations
+Total features available : 256
+Features selected        : 70
+
+Selected feature indices:
+[
+ 187, 240, 239, 227, 67, 159, 233, 5, 228, 230
+ 3, 14, 248, 217, 250, 73, 158, 170, 107, 242
+ 222, 197, 255, 204, 244, 147, 180, 15, 143, 13
+ 219, 168, 237, 149, 109, 246, 160, 205, 169, 138
+ 220, 23, 10, 153, 155, 249, 189, 140, 203, 218
+ 173, 214, 178, 198, 148, 164, 25, 254, 174, 108
+ 195, 183, 139, 235, 175, 144, 229, 172, 190, 177
+]
+
+Feature importance (by selection order):
+   1. Feature 187  (Initial rank: 1)
+   2. Feature 240  (Initial rank: 16)
+   3. Feature 239  (Initial rank: 7)
+   4. Feature 227  (Initial rank: 15)
+   5. Feature  67  (Initial rank: 96)
+   6. Feature 159  (Initial rank: 11)
+   7. Feature 233  (Initial rank: 65)
+   8. Feature   5  (Initial rank: 6)
+   9. Feature 228  (Initial rank: 13)
+  10. Feature 230  (Initial rank: 8)
+  11. Feature   3  (Initial rank: 12)
+  12. Feature  14  (Initial rank: 75)
+  13. Feature 248  (Initial rank: 94)
+  14. Feature 217  (Initial rank: 79)
+  15. Feature 250  (Initial rank: 83)
+  16. Feature  73  (Initial rank: 74)
+  17. Feature 158  (Initial rank: 49)
+  18. Feature 170  (Initial rank: 10)
+  19. Feature 107  (Initial rank: 53)
+  20. Feature 242  (Initial rank: 39)
+  21. Feature 222  (Initial rank: 81)
+  22. Feature 197  (Initial rank: 5)
+  23. Feature 255  (Initial rank: 71)
+  24. Feature 204  (Initial rank: 22)
+  25. Feature 244  (Initial rank: 73)
+  26. Feature 147  (Initial rank: 82)
+  27. Feature 180  (Initial rank: 35)
+  28. Feature  15  (Initial rank: 36)
+  29. Feature 143  (Initial rank: 92)
+  30. Feature  13  (Initial rank: 3)
+  ... and 40 more features
+
+
+Selection history:
+Iteration  Feature  Accuracy
+---------  -------  --------
+        1      187  0.433639
+        2      240  0.533158
+        3      239  0.584224
+        4      227  0.609432
+        5       67  0.628509
+        6      159  0.646618
+        7      233  0.663972
+        8        5  0.673529
+        9      228  0.681887
+       10      230  0.694639
+       11        3  0.706435
+       12       14  0.714957
+       13      248  0.719941
+       14      217  0.725858
+       15      250  0.729266
+       16       73  0.735710
+       17      158  0.741149
+       18      170  0.744830
+       19      107  0.749499
+       20      242  0.753727
+       21      222  0.757530
+       22      197  0.760022
+       23      255  0.764646
+       24      204  0.767051
+       25      244  0.768738
+       26      147  0.770522
+       27      180  0.771764
+       28       15  0.774692
+       29      143  0.778598
+       30       13  0.780339
+       31      219  0.784442
+       32      168  0.786971
+       33      237  0.789138
+       34      149  0.791407
+       35      109  0.792794
+       36      246  0.793972
+       37      160  0.794787
+       38      205  0.796907
+       39      169  0.797225
+       40      138  0.798777
+       41      220  0.800314
+       42       23  0.801149
+       43       10  0.802251
+       44      153  0.803968
+       45      155  0.806017
+       46      249  0.807789
+       47      189  0.808325
+       48      140  0.808999
+       49      203  0.809502
+       50      218  0.810123
+       51      173  0.810153
+       52      214  0.810164
+       53      178  0.810626
+       54      198  0.811366
+       55      148  0.811266
+       56      164  0.812106
+       57       25  0.812407
+       58      254  0.812623
+       59      174  0.812971
+       60      108  0.813080
+       61      195  0.812986
+       62      183  0.813245
+       63      139  0.815040
+       64      235  0.816713
+       65      175  0.819305
+       66      144  0.820029
+       67      229  0.819996
+       68      172  0.820052
+       69      190  0.819934
+       70      177  0.819367
+       71        0  0.000000

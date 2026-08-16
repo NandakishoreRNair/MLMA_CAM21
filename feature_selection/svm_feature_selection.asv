@@ -1,30 +1,36 @@
 %% ========================================================
-%% FEATURE SELECTION: DBN MODEL
-%% Sequential Forward Selection using Dynamic Bayesian Network
-%% Compare Temporal (DBN) vs Non-Temporal (LDA, SVM, RF)
+%% FEATURE SELECTION: SVM MODEL (Linear Kernel)
+%% Sequential Forward Selection
+%% Leave-One-Trial-Out Cross Validation
 %% ========================================================
 
 clear all; close all; clc;
 
+%%parallelPool 
+if isempty(gcp('nocreate'))
+    c = parcluster('local');
+    parpool('local', c.NumWorkers);  
+end
+
 %% ========================================================
-%% USER SETTINGS - CHOOSE PHASE
+%% USER SETTINGS - CHOOSE Ground
 %% ========================================================
 
-ground_to_test = 'ramp';  % Options: 35 or 85
+ground_to_test = 'stair'; 
 
 fprintf('=======================================================\n');
-fprintf('DBN FEATURE SELECTION\n');
+fprintf('SVM FEATURE SELECTION\n');
 fprintf('Ground: %s\n', ground_to_test);
 fprintf('=======================================================\n\n');
 
 %% ========================================================
 %% SETUP PATHS
 %% ========================================================
-
+%% /home/eeiww/ut55iqoh/MLMA_CAM21
+%%base_folder = sprintf('D:\\CAM21\\data\\Classification\\%s\\', ground_to_test);
 base_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/Classification/%s/', ground_to_test);
 
-subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17', 'ab18', ...
-            'ab19', 'ab20', 'ab21', 'ab23', 'ab24', 'ab27', 'ab28'};
+subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17'};
 
 output_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/result_feature_selection/%s/', ground_to_test);
 if ~exist(output_folder, 'dir')
@@ -35,19 +41,18 @@ end
 %% PARAMETERS
 %% ========================================================
 
-MAX_FEATURES_TARGET  = 150;
+MAX_FEATURES_TARGET      = 150;
 MIN_FEATURES_FOR_INITIAL = 100;
 
-% --- Early stopping ---
-% Stop if accuracy does not improve by at least MIN_IMPROVEMENT
-% for PATIENCE consecutive iterations.
-PATIENCE     = 5;     % how many iterations without improvement before stopping
-MIN_IMPROVEMENT = 1e-4; % minimum meaningful accuracy gain
+% Early stopping
+PATIENCE        = 5;      % consecutive iterations with no improvement before stop
+MIN_IMPROVEMENT = 1e-4;   % minimum accuracy gain to count as improvement
 
 fprintf('Configuration:\n');
+fprintf('  Model            : SVM (Linear Kernel, One-vs-One multiclass)\n');
 fprintf('  Target features  : %d\n', MAX_FEATURES_TARGET);
-fprintf('  Gound            : %s\n', ground_to_test);
-fprintf('  Early-stop patience : %d iterations\n', PATIENCE);
+fprintf('  Ground        : %s\n', ground_to_test);
+fprintf('  Patience         : %d iterations\n', PATIENCE);
 fprintf('  Min improvement  : %.4f\n', MIN_IMPROVEMENT);
 fprintf('  Base folder      : %s\n', base_folder);
 fprintf('  Output folder    : %s\n\n', output_folder);
@@ -86,7 +91,7 @@ for subj_idx = 1:length(subjects)
         labels_col = output_table.labels_feat_last;
         trial_col  = output_table.trial_feat_last;
 
-        % Merge turn1 and turn2 into a single 'turn' class
+        % Merge turn1 and turn2 into single 'turn' class
         for i = 1:length(labels_col)
             if strcmp(labels_col{i}, 'turn1') || strcmp(labels_col{i}, 'turn2')
                 labels_col{i} = 'turn';
@@ -123,8 +128,8 @@ fprintf('Classes: %d\n\n', num_classes);
 
 %% ========================================================
 %% STEP 2: FEATURE RANKING
-%%   NOTE: only z-score here for ranking purposes.
-%%   The CV loop will re-normalise per fold (no leakage).
+%%   Global z-score used for ranking ONLY.
+%%   CV loop re-normalises per fold to avoid leakage.
 %% ========================================================
 
 fprintf('=======================================================\n');
@@ -133,11 +138,10 @@ fprintf('=======================================================\n\n');
 
 fprintf('Computing feature scores (variance x label-correlation)...\n\n');
 
-% Global z-score used ONLY for ranking, NOT passed into CV
 mu_global    = mean(X_combined);
 sigma_global = std(X_combined);
 sigma_global(sigma_global == 0) = 1;
-X_normalized_rank = (X_combined - mu_global) ./ sigma_global;
+X_norm_rank = (X_combined - mu_global) ./ sigma_global;  % for ranking only
 
 feature_scores = zeros(size(X_combined, 2), 1);
 tic;
@@ -147,8 +151,8 @@ for feat = 1:size(X_combined, 2)
         fprintf('[%s] Feature %3d / %d  (Elapsed: %.1f sec)\n', ...
             datetime('now','Format','HH:mm:ss'), feat, size(X_combined,2), toc);
     end
-    var_score        = var(X_normalized_rank(:, feat));
-    corr_with_labels = abs(corr(X_normalized_rank(:, feat), y_combined_numeric));
+    var_score            = var(X_norm_rank(:, feat));
+    corr_with_labels     = abs(corr(X_norm_rank(:, feat), y_combined_numeric));
     feature_scores(feat) = var_score * corr_with_labels;
 end
 
@@ -164,12 +168,12 @@ end
 fprintf('\n');
 
 %% ========================================================
-%% STEP 3: DBN FEATURE SELECTION  (Leave-One-Trial-Out CV)
+%% STEP 3: SVM FEATURE SELECTION  (Leave-One-Trial-Out CV)
 %% ========================================================
 
 fprintf('=======================================================\n');
-fprintf('STEP 3: DBN FEATURE SELECTION\n');
-fprintf('Sequential Forward Selection with Leave-One-Trial-Out CV\n');
+fprintf('STEP 3: SVM FEATURE SELECTION\n');
+fprintf('Sequential Forward Selection + Leave-One-Trial-Out CV\n');
 fprintf('Early stopping: patience=%d, min_improvement=%.4f\n', ...
     PATIENCE, MIN_IMPROVEMENT);
 fprintf('=======================================================\n\n');
@@ -177,12 +181,11 @@ fprintf('=======================================================\n\n');
 unique_trials = unique(trial_combined);
 num_folds     = length(unique_trials);
 
-% Use column vectors throughout to avoid shape-mismatch errors
-selected_features  = zeros(0, 1);                          % column vector
-remaining_features = ranked_features(1:min(MIN_FEATURES_FOR_INITIAL, ...
-                        length(ranked_features)));         % already column from sort
+% Column vectors throughout to avoid shape-mismatch errors
+selected_features  = zeros(0, 1);
+remaining_features = ranked_features(1:min(MIN_FEATURES_FOR_INITIAL, length(ranked_features)));
 
-% Pre-allocate history arrays (faster than struct concatenation)
+% Pre-allocate history
 history_feature  = zeros(MAX_FEATURES_TARGET, 1);
 history_accuracy = zeros(MAX_FEATURES_TARGET, 1);
 
@@ -191,8 +194,22 @@ best_accuracy_so_far = -inf;
 no_improve_count     = 0;
 stop_reason          = 'max features reached';
 
+% SVM template — linear kernel, defined once for efficiency
+svm_template = templateSVM('KernelFunction', 'linear', ...
+                            'Standardize', false,'Solver','ISDA');  % we standardise manually per fold
+
 iteration = 0;
 tic;
+
+%%parallelpool
+num_folds_par      = num_folds;
+unique_trials_par  = unique_trials;
+trial_par          = trial_combined;
+y_numeric_par      = y_combined_numeric;
+svm_tmpl           = svm_template;
+
+
+
 
 while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_features)
     iteration = iteration + 1;
@@ -206,77 +223,45 @@ while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_feat
     best_candidate_feature  = -1;
     best_candidate_accuracy = -inf;
 
-    % ---- test each candidate feature ----
     for k = 1:length(remaining_features)
         feat = remaining_features(k);
 
-        current_features = [selected_features; feat];   % both column vectors → safe
-        X_subset = X_combined(:, current_features);     % use RAW data; normalise per fold
+        current_features = [selected_features; feat];
+        X_subset = X_combined(:, current_features);   % raw data — normalise per fold
 
         fold_accuracies = zeros(num_folds, 1);
         valid_fold      = false(num_folds, 1);
 
-        for fold = 1:num_folds
-            test_trial = unique_trials(fold);
+        parfor fold = 1:num_folds_par
+        test_trial = unique_trials_par(fold);
+        train_mask = trial_par ~= test_trial;
+        test_mask  = trial_par == test_trial;
 
-            train_mask = trial_combined ~= test_trial;
-            test_mask  = trial_combined == test_trial;
+        % Slice X here inside parfor (was missing before)
+        X_train = X_subset(train_mask, :);
+        X_test  = X_subset(test_mask,  :);
+        y_train = y_numeric_par(train_mask);
+        y_test  = y_numeric_par(test_mask);
 
-            X_train = X_subset(train_mask, :);
-            y_train = y_combined_numeric(train_mask);
-            X_test  = X_subset(test_mask,  :);
-            y_test  = y_combined_numeric(test_mask);
+        % Normalise using training statistics ONLY (no leakage)
+        mu_tr    = mean(X_train);
+        sigma_tr = std(X_train);
+        sigma_tr(sigma_tr == 0) = 1;
+        X_train = (X_train - mu_tr) ./ sigma_tr;
+        X_test  = (X_test  - mu_tr) ./ sigma_tr;
 
-            % ---- Normalise using TRAINING statistics only (no leakage) ----
-            mu_tr    = mean(X_train);
-            sigma_tr = std(X_train);
-            sigma_tr(sigma_tr == 0) = 1;
+        try
+            svm_model = fitcecoc(X_train, y_train, 'Learners', svm_tmpl, ...
+                             'Coding', 'onevsone','Options', statset('UseParallel', false));
+            y_pred = predict(svm_model, X_test);
 
-            X_train = (X_train - mu_tr) ./ sigma_tr;
-            X_test  = (X_test  - mu_tr) ./ sigma_tr;
+            fold_accuracies(fold) = sum(y_pred == y_test) / length(y_test);
+            valid_fold(fold)      = true;
 
-            try
-                % Train LDA for emission probabilities
-                lda_model = fitcdiscr(X_train, y_train, 'DiscrimType', 'linear');
-                [~, scores] = predict(lda_model, X_test);
-
-                % Clamp and row-normalise emission probabilities
-                emission_probs = max(scores, 1e-10);
-                emission_probs = emission_probs ./ sum(emission_probs, 2);
-
-                % Build transition matrix from TRAINING sequence
-                transition_matrix = ones(num_classes, num_classes);
-                for t = 1:length(y_train)-1
-                    transition_matrix(y_train(t), y_train(t+1)) = ...
-                        transition_matrix(y_train(t), y_train(t+1)) + 1;
-                end
-                transition_matrix = transition_matrix ./ sum(transition_matrix, 2);
-
-                % HMM forward filtering
-                T = size(emission_probs, 1);
-                filtered_probs = zeros(T, num_classes);
-                filtered_probs(1, :) = emission_probs(1, :) / sum(emission_probs(1, :));
-
-                for t = 2:T
-                    temporal_prior      = filtered_probs(t-1, :) * transition_matrix;
-                    filtered_probs(t,:) = emission_probs(t,:) .* temporal_prior;
-                    s = sum(filtered_probs(t,:));
-                    if s < 1e-300
-                        % underflow guard: fall back to emission only
-                        filtered_probs(t,:) = emission_probs(t,:);
-                        s = sum(filtered_probs(t,:));
-                    end
-                    filtered_probs(t,:) = filtered_probs(t,:) ./ s;
-                end
-
-                [~, y_pred] = max(filtered_probs, [], 2);
-                fold_accuracies(fold) = sum(y_pred == y_test) / length(y_test);
-                valid_fold(fold)      = true;
-
-            catch
-                % skip fold on error (e.g. rank-deficient LDA)
-            end
+        catch ME
+            fprintf('Fold %d failed: %s\n', fold, ME.message);
         end
+    end
 
         if any(valid_fold)
             avg_acc = mean(fold_accuracies(valid_fold));
@@ -287,23 +272,21 @@ while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_feat
         end
     end
 
-    % ---- No valid candidate found at all ----
+    % No valid candidate at all
     if best_candidate_feature == -1
         stop_reason = 'no valid candidate (all folds errored)';
-        fprintf('[%s] Iter %3d: No valid candidate found. Stopping.\n', ...
+        fprintf('[%s] Iter %3d: No valid candidate. Stopping.\n', ...
             datetime('now','Format','HH:mm:ss'), iteration);
         break;
     end
 
-    % ---- Check whether accuracy actually improved ----
+    % Check for meaningful improvement
     improvement = best_candidate_accuracy - best_accuracy_so_far;
 
     if improvement >= MIN_IMPROVEMENT
-        % Genuine improvement
         best_accuracy_so_far = best_candidate_accuracy;
         no_improve_count     = 0;
     else
-        % No meaningful improvement this iteration
         no_improve_count = no_improve_count + 1;
         fprintf('[%s] Iter %3d: No improvement (gain=%.5f, patience %d/%d)\n', ...
             datetime('now','Format','HH:mm:ss'), iteration, ...
@@ -311,25 +294,39 @@ while length(selected_features) < MAX_FEATURES_TARGET && ~isempty(remaining_feat
 
         if no_improve_count >= PATIENCE
             stop_reason = sprintf('no improvement for %d consecutive iterations', PATIENCE);
-            fprintf('[%s] Early stopping triggered after %d iterations without improvement.\n', ...
-                datetime('now','Format','HH:mm:ss'), PATIENCE);
+            fprintf('[%s] Early stopping triggered.\n', ...
+                datetime('now','Format','HH:mm:ss'));
             break;
         end
     end
 
-    % ---- Accept the best feature found this iteration ----
+    % Accept best candidate
     selected_features  = [selected_features; best_candidate_feature];
     remaining_features = remaining_features(remaining_features ~= best_candidate_feature);
 
     history_feature(iteration)  = best_candidate_feature;
     history_accuracy(iteration) = best_candidate_accuracy;
+
+    % ===== Checkpoint every 10 iterations =====
+    if mod(iteration,10)==0
+        save(fullfile(output_folder,'checkpoint.mat'), ...
+            'selected_features', ...
+            'remaining_features', ...
+            'history_feature', ...
+            'history_accuracy', ...
+            'iteration', ...
+            'best_accuracy_so_far', ...
+            'no_improve_count');
+            fprintf('[%s] Checkpoint saved at iteration %d\n', ...
+            datetime('now','Format','HH:mm:ss'), iteration);
+    end
 end
 
-% Trim pre-allocated arrays to actual length
+% Trim history arrays
 history_feature  = history_feature(1:iteration);
 history_accuracy = history_accuracy(1:iteration);
 
-fprintf('\n[%s] DBN feature selection complete!\n', datetime('now','Format','HH:mm:ss'));
+fprintf('\n[%s] SVM feature selection complete!\n', datetime('now','Format','HH:mm:ss'));
 fprintf('Stop reason    : %s\n', stop_reason);
 fprintf('Total selected : %d features\n\n', length(selected_features));
 
@@ -341,12 +338,13 @@ fprintf('=======================================================\n');
 fprintf('STEP 4: SAVING RESULTS\n');
 fprintf('=======================================================\n\n');
 
-txt_filename = fullfile(output_folder, 'DBN_selected_features_no_improve_stop.txt');
+txt_filename = fullfile(output_folder, 'SVM_selected_features.txt');
 fid = fopen(txt_filename, 'w');
 
 fprintf(fid, '=======================================================\n');
-fprintf(fid, 'DBN SELECTED FEATURES (Ground: %s)\n', ground_to_test);
+fprintf(fid, 'SVM SELECTED FEATURES (Ground: %s)\n', ground_to_test);
 fprintf(fid, '=======================================================\n\n');
+fprintf(fid, 'Model  : SVM (Linear Kernel, ECOC One-vs-One)\n');
 fprintf(fid, 'Method : Sequential Forward Selection + Leave-One-Trial-Out CV\n');
 fprintf(fid, 'Stop   : %s\n', stop_reason);
 fprintf(fid, 'Total features available : 256\n');
@@ -382,7 +380,7 @@ end
 fclose(fid);
 fprintf('Saved: %s\n', txt_filename);
 
-mat_filename = fullfile(output_folder, 'DBN_selected_features_no_improve_stop.mat');
+mat_filename = fullfile(output_folder, 'SVM_selected_features.mat');
 features = selected_features;
 save(mat_filename, 'features', 'history_feature', 'history_accuracy');
 fprintf('Saved: %s\n\n', mat_filename);
@@ -392,17 +390,17 @@ fprintf('Saved: %s\n\n', mat_filename);
 %% ========================================================
 
 fprintf('=======================================================\n');
-fprintf('SUMMARY\n');
+fprintf('SUMMARY — SVM\n');
 fprintf('=======================================================\n\n');
-fprintf('ground          : %s\n', ground_to_test);
+fprintf('Ground             : %s\n', ground_to_test);
 fprintf('Features selected : %d / 256\n', length(selected_features));
-fprintf('Iterations run : %d\n', iteration);
-fprintf('Stop reason    : %s\n', stop_reason);
+fprintf('Iterations run    : %d\n', iteration);
+fprintf('Stop reason       : %s\n', stop_reason);
 if ~isempty(history_accuracy)
-    fprintf('Final accuracy : %.4f\n', history_accuracy(end));
-    fprintf('Best accuracy  : %.4f\n', max(history_accuracy));
+    fprintf('Final accuracy    : %.4f\n', history_accuracy(end));
+    fprintf('Best accuracy     : %.4f\n', max(history_accuracy));
 end
 fprintf('\nOutput saved to: %s\n', output_folder);
 fprintf('\n=======================================================\n');
-fprintf('FEATURE SELECTION COMPLETE!\n');
+fprintf('SVM FEATURE SELECTION COMPLETE!\n');
 fprintf('=======================================================\n');

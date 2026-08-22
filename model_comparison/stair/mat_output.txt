@@ -1,0 +1,93 @@
+=======================================================
+HYPOTHESIS TEST: Steady State vs Transition Accuracy
+Ground : stair
+Models : LDA, SVM, RF, DBN
+Features: DBN-selected (same for all models)
+=======================================================
+
+STEP 1: LOADING DBN FEATURES
+
+DBN features loaded: 79 features
+
+STEP 2: LOADING DATA FROM ALL SUBJECTS
+
+Loaded: ab07  (1870 samples)
+Loaded: ab08  (1826 samples)
+Loaded: ab09  (1832 samples)
+Loaded: ab12  (1757 samples)
+Loaded: ab13  (1691 samples)
+Loaded: ab14  (1619 samples)
+Loaded: ab17  (1733 samples)
+Loaded: ab18  (2022 samples)
+Loaded: ab19  (1788 samples)
+Loaded: ab20  (1890 samples)
+Loaded: ab21  (1761 samples)
+Loaded: ab23  (1896 samples)
+Loaded: ab24  (1792 samples)
+Loaded: ab27  (1826 samples)
+Loaded: ab28  (1774 samples)
+
+Total: 27077 samples, 79 features
+
+Class distribution:
+  idle            :  9661 samples
+  stairascent     :  3811 samples
+  stairascent-walk :  2265 samples ← TRANSITION
+  stairdescent    :  3784 samples
+  stairdescent-walk :  2532 samples ← TRANSITION
+  walk-stairascent :  2500 samples ← TRANSITION
+  walk-stairdescent :  2524 samples ← TRANSITION
+
+Total steady state : 17256 samples
+Total transitions  : 9821 samples
+
+=======================================================
+STEP 3: LEAVE-ONE-TRIAL-OUT CV — ALL 4 MODELS
+=======================================================
+
+[10:23:22] Fold 1 / 8  (0.0 sec)
+[10:31:50] Fold 5 / 8  (508.0 sec)
+
+[10:43:03] CV complete! (1181.5 sec)
+
+=======================================================
+STEP 4: RESULTS — STEADY STATE vs TRANSITION
+=======================================================
+
+Model    Overall (%)  Steady St. (%)  Transition (%)
+-------------------------------------------------------
+LDA            72.23           85.88           48.23
+SVM            80.35           90.79           62.00
+RF             86.64           95.79           70.55
+DBN            79.59           96.01           50.74
+-------------------------------------------------------
+
+DBN advantage over others AT TRANSITIONS:
+  DBN vs LDA  : +2.50%
+  DBN vs SVM  : +-11.26%
+  DBN vs RF   : +-19.81%
+
+DBN advantage over others AT STEADY STATE:
+  DBN vs LDA  : +10.13%
+  DBN vs SVM  : +5.22%
+  DBN vs RF   : +0.22%
+
+=======================================================
+STEP 5: TEMPORAL SMOOTHNESS CHECK
+=======================================================
+
+LDA smoothness : 17952 / 27076  (66.3%)
+DBN smoothness : 21616 / 27076  (79.8%)
+Smoothness gain: +3664 predictions (13.5%)
+✓ DBN IS smoother — temporal filtering working
+
+STEP 6: PLOTTING
+
+STEP 7: SAVING RESULTS
+
+Saved: /home/eeiww/ut55iqoh/MLMA_CAM21/model_comparison/stair/hypothesis_test_results.txt
+
+=======================================================
+HYPOTHESIS TEST COMPLETE!
+=======================================================
+>> 

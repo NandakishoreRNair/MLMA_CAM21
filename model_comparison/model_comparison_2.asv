@@ -1,0 +1,517 @@
+%% ========================================================
+%% HYPOTHESIS TEST: Temporal Modeling at Gait Phase Transitions
+%%
+%% "At steady-state (35% gait), simpler models suffice.
+%%  At transitions (85% gait), DBN temporal advantage is critical."
+%%
+%% Method:
+%%   - Train separate models at 35% and 85% gait phase
+%%   - DBN uses 35% prediction as prior for 85% classification
+%%   - Transition step = label differs between 35% and 85%
+%%   - CV: Leave-One-Trial-Out (within combined subjects)
+%% ========================================================
+
+clear all; close all; clc;
+
+%% ========================================================
+%% SETTINGS
+%% ========================================================
+
+ground_to_test = 'levelground';
+
+base_35 = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/Classification/%s/35/400/', ground_to_test);
+base_85 = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/Classification/%s/85/400/', ground_to_test);
+
+output_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/result_hypothesis_35vs85/%s/', ground_to_test);
+if ~exist(output_folder, 'dir')
+    mkdir(output_folder);
+end
+
+subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17', 'ab18', ...
+            'ab19', 'ab20', 'ab21', 'ab23', 'ab24', 'ab27', 'ab28'};
+
+NUM_TREES = 30;
+
+fprintf('=======================================================\n');
+fprintf('HYPOTHESIS TEST: Gait Phase Temporal Advantage\n');
+fprintf('Ground : %s\n', ground_to_test);
+fprintf('35%% = steady state  |  85%% = transition\n');
+fprintf('=======================================================\n\n');
+
+%% ========================================================
+%% STEP 1: LOAD DBN FEATURES
+%% ========================================================
+
+fprintf('STEP 1: LOADING DBN FEATURES\n\n');
+
+dbn_mat = fullfile( ...
+    sprintf('D:\\CAM21\\code\\my_code\\result_feature_selection\\%s\\', ground_to_test), ...
+    'DBN_selected_features.mat');
+
+if ~isfile(dbn_mat)
+    error('DBN features not found at:\n%s', dbn_mat);
+end
+
+dbn_data          = load(dbn_mat);
+selected_features = dbn_data.features;
+fprintf('DBN features loaded: %d features\n\n', length(selected_features));
+
+%% ========================================================
+%% STEP 2: LOAD DATA — HANDLE MISMATCHED ROW COUNTS
+%%
+%% Some subjects have different row counts between 35% and 85%
+%% files. Fix: align by matching trial numbers, then within
+%% each trial match rows by taking minimum count.
+%% ========================================================
+
+fprintf('STEP 2: LOADING AND ALIGNING 35%% AND 85%% DATA\n\n');
+
+X35_combined     = [];
+X85_combined     = [];
+y35_combined     = {};
+y85_combined     = {};
+trial_combined   = [];
+subject_combined = [];
+
+for subj_idx = 1:length(subjects)
+    subject = subjects{subj_idx};
+
+    input35  = fullfile(base_35, [subject '_input.mat']);
+    output35 = fullfile(base_35, [subject '_output.mat']);
+    input85  = fullfile(base_85, [subject '_input.mat']);
+    output85 = fullfile(base_85, [subject '_output.mat']);
+
+    if ~isfile(input35) || ~isfile(output35) || ...
+       ~isfile(input85) || ~isfile(output85)
+        fprintf('WARNING: Files not found for %s. Skipping.\n', subject);
+        continue;
+    end
+
+    try
+        in35  = load(input35);
+        out35 = load(output35);
+        in85  = load(input85);
+        out85 = load(output85);
+
+        X35_all    = table2array(in35.alldata);
+        X85_all    = table2array(in85.alldata);
+        labels35_all = out35.alldata.labels_feat_last;
+        labels85_all = out85.alldata.labels_feat_last;
+        trial35_all  = out35.alldata.trial_feat_last;
+        trial85_all  = out85.alldata.trial_feat_last;
+
+        % Select DBN features
+        X35_all = X35_all(:, selected_features);
+        X85_all = X85_all(:, selected_features);
+
+        % Find common trials between 35% and 85% files
+        common_trials = intersect(unique(trial35_all), unique(trial85_all));
+
+        X35_subj = []; X85_subj = [];
+        y35_subj = {}; y85_subj = {};
+        trial_subj = [];
+
+        for tt = 1:length(common_trials)
+            tr = common_trials(tt);
+
+            idx35 = find(trial35_all == tr);
+            idx85 = find(trial85_all == tr);
+
+            % If row counts differ within trial, take minimum
+            n = min(length(idx35), length(idx85));
+            if n == 0, continue; end
+
+            idx35 = idx35(1:n);
+            idx85 = idx85(1:n);
+
+            X35_subj   = [X35_subj;   X35_all(idx35, :)];
+            X85_subj   = [X85_subj;   X85_all(idx85, :)];
+            y35_subj   = [y35_subj;   labels35_all(idx35)];
+            y85_subj   = [y85_subj;   labels85_all(idx85)];
+            trial_subj = [trial_subj; repmat(tr + subj_idx*1000, n, 1)];
+        end
+
+        if isempty(X35_subj)
+            fprintf('WARNING: No aligned data for %s. Skipping.\n', subject);
+            continue;
+        end
+
+        X35_combined     = [X35_combined;     X35_subj];
+        X85_combined     = [X85_combined;     X85_subj];
+        y35_combined     = [y35_combined;     y35_subj];
+        y85_combined     = [y85_combined;     y85_subj];
+        trial_combined   = [trial_combined;   trial_subj];
+        subject_combined = [subject_combined; repmat(subj_idx, size(X35_subj,1), 1)];
+
+        trans  = sum(~strcmp(y35_subj, y85_subj));
+        steady = sum( strcmp(y35_subj, y85_subj));
+        fprintf('Loaded: %s  (%d steps | steady: %d | transition: %d)\n', ...
+            subject, size(X35_subj,1), steady, trans);
+
+    catch ME
+        fprintf('ERROR: %s - %s\n', subject, ME.message);
+    end
+end
+
+fprintf('\nTotal steps     : %d\n', size(X35_combined,1));
+fprintf('Features used   : %d\n', size(X35_combined,2));
+
+% Transition detection — label changes between 35% and 85%
+transition_steps = ~strcmp(y35_combined, y85_combined);
+steady_steps     =  strcmp(y35_combined, y85_combined);
+
+fprintf('Steady steps    : %d  (%.1f%%)\n', sum(steady_steps), ...
+    100*sum(steady_steps)/length(steady_steps));
+fprintf('Transition steps: %d  (%.1f%%)\n\n', sum(transition_steps), ...
+    100*sum(transition_steps)/length(transition_steps));
+
+if sum(transition_steps) == 0
+    error('No transition steps found. Check data alignment.');
+end
+
+% Label encoding — use union of 35% and 85% labels
+all_labels  = unique([y35_combined; y85_combined]);
+num_classes = length(all_labels);
+label_map   = containers.Map(all_labels, 1:num_classes);
+
+y35_numeric = zeros(length(y35_combined), 1);
+y85_numeric = zeros(length(y85_combined), 1);
+for i = 1:length(y35_combined)
+    y35_numeric(i) = label_map(y35_combined{i});
+    y85_numeric(i) = label_map(y85_combined{i});
+end
+
+fprintf('Classes (%d):\n', num_classes);
+for i = 1:num_classes
+    fprintf('  %d → %s\n', i, all_labels{i});
+end
+fprintf('\n');
+
+%% ========================================================
+%% STEP 3: LEAVE-ONE-TRIAL-OUT CV
+%%
+%% Trial IDs are globally unique (trial + subject*1000)
+%% so LOTO-CV naturally separates subjects' trials
+%%
+%% For each fold:
+%%   Train M35 on 35% features → get prior at 35%
+%%   Train M85 on 85% features → get emission at 85%
+%%   Build T matrix: P(class@85 | class@35)
+%%   DBN = emission@85 × (prior@35 × T)
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 3: LEAVE-ONE-TRIAL-OUT CV\n');
+fprintf('=======================================================\n\n');
+
+unique_trials = unique(trial_combined);
+num_folds     = length(unique_trials);
+
+fprintf('Total folds: %d\n\n', num_folds);
+
+all_truth_85   = [];
+all_trans_mask = [];
+all_pred_LDA   = [];
+all_pred_SVM   = [];
+all_pred_RF    = [];
+all_pred_DBN   = [];
+
+svm_template = templateSVM('KernelFunction', 'linear', 'Standardize', false);
+
+tic;
+
+for fold = 1:num_folds
+    test_trial = unique_trials(fold);
+
+    if mod(fold, 20) == 0 || fold == 1
+        fprintf('[%s] Fold %d / %d  (%.1f sec)\n', ...
+            datetime('now','Format','HH:mm:ss'), fold, num_folds, toc);
+    end
+
+    train_mask = trial_combined ~= test_trial;
+    test_mask  = trial_combined == test_trial;
+
+    % Skip if test fold has no transition steps (can't evaluate)
+    if sum(transition_steps(test_mask)) == 0 && sum(test_mask) < 3
+        continue;
+    end
+
+    % Train / test split
+    X35_train = X35_combined(train_mask, :);
+    X85_train = X85_combined(train_mask, :);
+    y35_train = y35_numeric(train_mask);
+    y85_train = y85_numeric(train_mask);
+
+    X35_test  = X35_combined(test_mask, :);
+    X85_test  = X85_combined(test_mask, :);
+    y85_test  = y85_numeric(test_mask);
+    trans_test = transition_steps(test_mask);
+
+    % Normalise using 85% training statistics
+    mu_tr    = mean(X85_train);
+    sigma_tr = std(X85_train);
+    sigma_tr(sigma_tr == 0) = 1;
+
+    X35_train_n = (X35_train - mu_tr) ./ sigma_tr;
+    X85_train_n = (X85_train - mu_tr) ./ sigma_tr;
+    X35_test_n  = (X35_test  - mu_tr) ./ sigma_tr;
+    X85_test_n  = (X85_test  - mu_tr) ./ sigma_tr;
+
+    % Check sufficient classes in training data
+    if length(unique(y85_train)) < 2
+        continue;
+    end
+
+    % Build transition matrix P(class@85 | class@35)
+    transition_matrix = ones(num_classes, num_classes);
+    for k = 1:length(y35_train)
+        transition_matrix(y35_train(k), y85_train(k)) = ...
+            transition_matrix(y35_train(k), y85_train(k)) + 1;
+    end
+    transition_matrix = transition_matrix ./ sum(transition_matrix, 2);
+
+    %% LDA at 85%
+    lda85_ok = false;
+    try
+        lda85_model = fitcdiscr(X85_train_n, y85_train, 'DiscrimType', 'linear');
+        pred_LDA    = predict(lda85_model, X85_test_n);
+        lda85_ok    = true;
+    catch
+        pred_LDA = mode(y85_train) * ones(size(y85_test));
+    end
+
+    %% SVM at 85%
+    try
+        svm85_model = fitcecoc(X85_train_n, y85_train, ...
+                               'Learners', svm_template, ...
+                               'Coding',   'onevsone');
+        pred_SVM    = predict(svm85_model, X85_test_n);
+    catch
+        pred_SVM = mode(y85_train) * ones(size(y85_test));
+    end
+
+    %% RF at 85%
+    try
+        rf85_model   = TreeBagger(NUM_TREES, X85_train, y85_train, ...
+                                  'Method',        'classification', ...
+                                  'OOBPrediction', 'off');
+        pred_RF_cell = predict(rf85_model, X85_test);
+        pred_RF      = str2double(pred_RF_cell);
+    catch
+        pred_RF = mode(y85_train) * ones(size(y85_test));
+    end
+
+    %% DBN: M35 prior + M85 emission
+    dbn_ok = false;
+    try
+        % Train M35 model
+        m35_model = fitcdiscr(X35_train_n, y35_train, 'DiscrimType', 'linear');
+
+        % Get prior from 35% prediction
+        [~, scores35] = predict(m35_model, X35_test_n);
+        prior_35      = max(scores35, 1e-10);
+
+        % Handle case where M35 has fewer classes than total
+        if size(prior_35, 2) < num_classes
+            prior_full = ones(size(prior_35,1), num_classes) * 1e-10;
+            train_classes_35 = unique(y35_train);
+            for ci = 1:length(train_classes_35)
+                prior_full(:, train_classes_35(ci)) = prior_35(:, ci);
+            end
+            prior_35 = prior_full;
+        end
+        prior_35 = prior_35 ./ sum(prior_35, 2);
+
+        % Propagate prior through transition matrix
+        temporal_prior = prior_35 * transition_matrix;
+        temporal_prior = temporal_prior ./ sum(temporal_prior, 2);
+
+        % Get emission from 85% LDA
+        if lda85_ok
+            [~, scores85] = predict(lda85_model, X85_test_n);
+            emission_85   = max(scores85, 1e-10);
+
+            % Handle class count mismatch
+            if size(emission_85, 2) < num_classes
+                emit_full = ones(size(emission_85,1), num_classes) * 1e-10;
+                train_classes_85 = unique(y85_train);
+                for ci = 1:length(train_classes_85)
+                    emit_full(:, train_classes_85(ci)) = emission_85(:, ci);
+                end
+                emission_85 = emit_full;
+            end
+            emission_85 = emission_85 ./ sum(emission_85, 2);
+        else
+            emission_85 = ones(size(y85_test,1), num_classes) / num_classes;
+        end
+
+        % DBN posterior = emission × temporal prior
+        posterior_85 = emission_85 .* temporal_prior;
+        posterior_85 = posterior_85 ./ sum(posterior_85, 2);
+
+        [~, pred_DBN] = max(posterior_85, [], 2);
+        dbn_ok = true;
+
+    catch ME
+        pred_DBN = pred_LDA;
+    end
+
+    % Accumulate
+    all_truth_85   = [all_truth_85;   y85_test];
+    all_trans_mask = [all_trans_mask; trans_test];
+    all_pred_LDA   = [all_pred_LDA;   pred_LDA];
+    all_pred_SVM   = [all_pred_SVM;   pred_SVM];
+    all_pred_RF    = [all_pred_RF;    pred_RF];
+    all_pred_DBN   = [all_pred_DBN;   pred_DBN];
+end
+
+fprintf('\n[%s] CV complete! (%.1f sec)\n\n', ...
+    datetime('now','Format','HH:mm:ss'), toc);
+
+%% ========================================================
+%% STEP 4: RESULTS
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 4: RESULTS — STEADY STATE vs TRANSITION\n');
+fprintf('=======================================================\n\n');
+
+trans_mask  = logical(all_trans_mask);
+steady_mask = ~trans_mask;
+
+fprintf('Test steps — steady: %d | transition: %d\n\n', ...
+    sum(steady_mask), sum(trans_mask));
+
+models    = {'LDA', 'SVM', 'RF', 'DBN'};
+all_preds = {all_pred_LDA, all_pred_SVM, all_pred_RF, all_pred_DBN};
+
+overall_acc    = zeros(4,1);
+steady_acc     = zeros(4,1);
+transition_acc = zeros(4,1);
+
+fprintf('%-6s  %12s  %15s  %15s\n', ...
+    'Model','Overall (%)','Steady St.(%)','Transition(%)');
+fprintf('%s\n', repmat('-',1,55));
+
+for i = 1:4
+    pred = all_preds{i};
+    overall_acc(i)    = mean(pred == all_truth_85)                            * 100;
+    steady_acc(i)     = mean(pred(steady_mask) == all_truth_85(steady_mask))  * 100;
+    transition_acc(i) = mean(pred(trans_mask)  == all_truth_85(trans_mask))   * 100;
+    fprintf('%-6s  %12.2f  %15.2f  %15.2f\n', ...
+        models{i}, overall_acc(i), steady_acc(i), transition_acc(i));
+end
+fprintf('%s\n\n', repmat('-',1,55));
+
+fprintf('DBN advantage AT TRANSITIONS:\n');
+for i = 1:3
+    fprintf('  DBN vs %-4s : %+.2f%%\n', models{i}, ...
+        transition_acc(4)-transition_acc(i));
+end
+fprintf('\nDBN advantage AT STEADY STATE:\n');
+for i = 1:3
+    fprintf('  DBN vs %-4s : %+.2f%%\n', models{i}, ...
+        steady_acc(4)-steady_acc(i));
+end
+
+%% ========================================================
+%% STEP 5: VISUALISATION
+%% ========================================================
+
+fprintf('\nSTEP 5: PLOTTING\n\n');
+
+% Plot 1: Grouped bar — steady vs transition
+figure('Name','Gait Phase Hypothesis','Position',[100 100 800 550]);
+bar_data = [steady_acc, transition_acc];
+b = bar(bar_data, 'grouped');
+b(1).FaceColor = [0.00 0.45 0.74];
+b(2).FaceColor = [0.85 0.33 0.10];
+xticks(1:4); xticklabels(models);
+ylabel('Accuracy at 85% Gait Phase (%)');
+xlabel('Model');
+title(sprintf(['Steady State vs Transition Accuracy\n' ...
+    '(%s | Steady=same label @35%%&85%% | Transition=label changes)'], ground_to_test));
+legend({'Steady steps (35%%=85%% label)', ...
+        'Transition steps (label changes)'}, 'Location','southeast');
+ylim([0 108]); grid on;
+for i = 1:4
+    text(i-0.15, steady_acc(i)+1, sprintf('%.1f%%',steady_acc(i)), ...
+        'HorizontalAlignment','center','FontSize',9);
+    text(i+0.15, transition_acc(i)+1, sprintf('%.1f%%',transition_acc(i)), ...
+        'HorizontalAlignment','center','FontSize',9,'Color',[0.6 0 0]);
+end
+saveas(gcf, fullfile(output_folder, 'gait_phase_hypothesis.png'));
+
+% Plot 2: DBN advantage
+figure('Name','DBN Transition Advantage','Position',[100 680 600 420]);
+dbn_adv = transition_acc(4) - transition_acc(1:3);
+b2 = bar(dbn_adv, 'FaceColor','flat');
+for i = 1:3
+    if dbn_adv(i) >= 0
+        b2.CData(i,:) = [0.47 0.67 0.19];
+    else
+        b2.CData(i,:) = [0.85 0.33 0.10];
+    end
+end
+xticks(1:3); xticklabels({'vs LDA','vs SVM','vs RF'});
+ylabel('DBN Accuracy Gain at Transitions (%)');
+title('DBN Advantage at Transition Steps');
+yline(0,'k--','LineWidth',1.5); grid on;
+for i = 1:3
+    text(i, dbn_adv(i)+sign(dbn_adv(i))*0.4, sprintf('%+.2f%%',dbn_adv(i)), ...
+        'HorizontalAlignment','center','FontSize',12,'FontWeight','bold');
+end
+saveas(gcf, fullfile(output_folder, 'dbn_transition_advantage.png'));
+
+%% ========================================================
+%% STEP 6: SAVE RESULTS
+%% ========================================================
+
+fprintf('STEP 6: SAVING RESULTS\n\n');
+
+txt_out = fullfile(output_folder, 'hypothesis_test_gait_phase_results.txt');
+fid = fopen(txt_out, 'w');
+fprintf(fid, '=======================================================\n');
+fprintf(fid, 'HYPOTHESIS TEST: GAIT PHASE TEMPORAL ADVANTAGE\n');
+fprintf(fid, 'Ground   : %s\n', ground_to_test);
+fprintf(fid, 'Features : DBN-selected (%d features)\n', length(selected_features));
+fprintf(fid, 'CV       : Leave-One-Trial-Out\n');
+fprintf(fid, 'DBN      : 35%% prediction as prior for 85%% classification\n');
+fprintf(fid, '=======================================================\n\n');
+fprintf(fid, 'Steps — steady: %d | transition: %d\n\n', ...
+    sum(steady_mask), sum(trans_mask));
+fprintf(fid, '%-6s  %12s  %15s  %15s\n', ...
+    'Model','Overall (%)','Steady St.(%)','Transition(%)');
+fprintf(fid, '%s\n', repmat('-',1,55));
+for i = 1:4
+    fprintf(fid, '%-6s  %12.2f  %15.2f  %15.2f\n', ...
+        models{i}, overall_acc(i), steady_acc(i), transition_acc(i));
+end
+fprintf(fid, '%s\n\n', repmat('-',1,55));
+fprintf(fid, 'DBN advantage AT TRANSITIONS:\n');
+for i = 1:3
+    fprintf(fid, '  DBN vs %-4s : %+.2f%%\n', ...
+        models{i}, transition_acc(4)-transition_acc(i));
+end
+fprintf(fid, '\nDBN advantage AT STEADY STATE:\n');
+for i = 1:3
+    fprintf(fid, '  DBN vs %-4s : %+.2f%%\n', ...
+        models{i}, steady_acc(4)-steady_acc(i));
+end
+fprintf(fid, '\nHYPOTHESIS VERDICT:\n');
+trans_gap  = min(transition_acc(4) - transition_acc(1:3));
+steady_gap = max(abs(steady_acc(4) - steady_acc(1:3)));
+if trans_gap > 2 && steady_gap < 2
+    fprintf(fid, 'SUPPORTED: DBN better at transitions (+%.2f%% min)\n', trans_gap);
+    fprintf(fid, '           and similar at steady state (%.2f%% max diff)\n', steady_gap);
+elseif trans_gap > 0
+    fprintf(fid, 'PARTIALLY SUPPORTED: DBN better at transitions (+%.2f%% min)\n', trans_gap);
+else
+    fprintf(fid, 'NOT SUPPORTED: DBN shows no transition advantage\n');
+end
+fclose(fid);
+
+fprintf('Saved: %s\n', txt_out);
+fprintf('\n=======================================================\n');
+fprintf('HYPOTHESIS TEST COMPLETE!\n');
+fprintf('=======================================================\n');

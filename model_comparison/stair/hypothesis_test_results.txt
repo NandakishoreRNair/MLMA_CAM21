@@ -1,0 +1,51 @@
+=======================================================
+HYPOTHESIS TEST RESULTS
+Ground   : stair
+Features : DBN-selected (79 features)
+Subjects : 15
+CV       : Leave-One-Subject-Out
+DBN HMM  : Per-trial (correct temporal sequencing)
+Split    : steadyState_feat_last flag
+=======================================================
+
+Sample counts:
+  Steady state : 17256
+  Transitions  : 9821
+
+Model    Overall (%)    Steady St.(%)    Transition(%)
+-------------------------------------------------------
+LDA            65.23            77.70            43.33
+SVM            68.52            77.57            52.62
+RF             71.43            84.08            49.21
+DBN            72.28            86.44            47.40
+-------------------------------------------------------
+
+DBN advantage AT TRANSITIONS:
+  DBN vs LDA  : +4.07%
+  DBN vs SVM  : -5.22%
+  DBN vs RF   : -1.81%
+
+DBN advantage AT STEADY STATE:
+  DBN vs LDA  : +8.74%
+  DBN vs SVM  : +8.87%
+  DBN vs RF   : +2.36%
+
+Per-class accuracy breakdown:
+Class                           LDA       SVM        RF       DBN
+------------------------------------------------------------
+idle                              93.0     91.9     97.8     95.9
+stairascent                       59.8     63.7     65.0     77.2
+stairascent-walk          [T]     47.5     58.3     43.7     48.6
+stairdescent                      56.6     54.9     68.2     71.7
+stairdescent-walk         [T]     43.1     55.3     55.1     41.6
+walk-stairascent          [T]     48.6     52.6     56.6     59.4
+walk-stairdescent         [T]     34.6     44.9     40.8     40.3
+[T] = Transition class
+
+Smoothness:
+  LDA: 64.6%
+  DBN: 78.4%
+  Gain: +13.8%
+
+HYPOTHESIS VERDICT:
+NOT SUPPORTED: DBN shows no clear transition advantage

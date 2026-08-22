@@ -1,0 +1,15 @@
+STATISTICAL SIGNIFICANCE TESTS
+Ground: levelground | Subjects: 15
+
+TRANSITION ACCURACY (DBN vs LDA):
+  Mean difference : +2.87%
+  t-test p-value  : 0.0000 (SIGNIFICANT)
+  Wilcoxon p-value: 0.0002 (SIGNIFICANT)
+  Cohens d        : 1.5218
+
+STEADY STATE ACCURACY (DBN vs LDA):
+  Mean difference : +4.29%
+  t-test p-value  : 0.0000 (SIGNIFICANT)
+  Wilcoxon p-value: 0.0001 (SIGNIFICANT)
+  Cohens d        : 2.0807
+

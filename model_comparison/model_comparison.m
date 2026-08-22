@@ -1,0 +1,483 @@
+%% ========================================================
+%% HYPOTHESIS TEST: Temporal Modeling at Transitions
+%% 
+%% "At steady-state, simpler models suffice.
+%%  At transitions, DBN temporal advantage is critical."
+%%
+%% All 4 models use SAME DBN-selected features.
+%% Only the classifier changes.
+%% Results split into steady-state vs transition accuracy.
+%% ========================================================
+
+clear all; close all; clc;
+
+%% ========================================================
+%% SETTINGS
+%% ========================================================
+
+ground_to_test = 'levelground';
+
+base_folder   = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/Classification/%s/', ground_to_test);
+output_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/model_comparison/%s/', ground_to_test);
+
+if ~exist(output_folder, 'dir')
+    mkdir(output_folder);
+end
+
+subjects = {'ab07', 'ab08', 'ab09', 'ab12', 'ab13', 'ab14', 'ab17', 'ab18', ...
+            'ab19', 'ab20', 'ab21', 'ab23', 'ab24', 'ab27', 'ab28'};
+
+% Transition class labels — from file analysis
+TRANSITION_LABELS = {'stand-walk', 'walk-stand'};
+%TRANSITION_LABELS = {'stairascent-walk', 'stairdescent-walk','walk-stairascent','walk-stairdescent'};
+% RF trees
+NUM_TREES = 30;
+
+fprintf('=======================================================\n');
+fprintf('HYPOTHESIS TEST: Steady State vs Transition Accuracy\n');
+fprintf('Ground : %s\n', ground_to_test);
+fprintf('Models : LDA, SVM, RF, DBN\n');
+fprintf('Features: DBN-selected (same for all models)\n');
+fprintf('=======================================================\n\n');
+
+%% ========================================================
+%% STEP 1: LOAD DBN FEATURES
+%% ========================================================
+
+fprintf('STEP 1: LOADING DBN FEATURES\n\n');
+
+dbn_mat = fullfile( ...
+    sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/result_feature_selection/%s/', ground_to_test), ...
+    'DBN_selected_features_no_improve_stop.mat');
+
+if ~isfile(dbn_mat)
+    error('DBN features not found at: %s\nRun DBN feature selection first.', dbn_mat);
+end
+
+dbn_data          = load(dbn_mat);
+selected_features = dbn_data.features;
+
+fprintf('DBN features loaded: %d features\n\n', length(selected_features));
+
+%% ========================================================
+%% STEP 2: LOAD AND COMBINE DATA
+%% ========================================================
+
+fprintf('STEP 2: LOADING DATA FROM ALL SUBJECTS\n\n');
+
+X_combined      = [];
+y_combined      = {};
+trial_combined  = [];
+subject_indices = [];
+
+for subj_idx = 1:length(subjects)
+    subject     = subjects{subj_idx};
+    input_file  = fullfile(base_folder, ['full_' subject '_input_4.mat']);
+    output_file = fullfile(base_folder, ['full_' subject '_output_4.mat']);
+
+    if ~isfile(input_file) || ~isfile(output_file)
+        fprintf('WARNING: %s not found. Skipping.\n', subject);
+        continue;
+    end
+
+    try
+        input_data  = load(input_file);
+        output_data = load(output_file);
+
+        X         = table2array(input_data.alldata);
+        out_table = output_data.alldata;
+
+        labels_col = out_table.labels_feat_last;
+        trial_col  = out_table.trial_feat_last;
+
+        % Keep original labels — DO NOT merge turns
+        % stand-walk and walk-stand must stay separate for transition detection
+
+        % Select DBN features only
+        X = X(:, selected_features);
+
+        X_combined      = [X_combined;      X];
+        y_combined      = [y_combined;      labels_col];
+        trial_combined  = [trial_combined;  trial_col];
+        subject_indices = [subject_indices; repmat(subj_idx, size(X,1), 1)];
+
+        fprintf('Loaded: %s  (%d samples)\n', subject, size(X,1));
+
+    catch ME
+        fprintf('ERROR: %s — %s\n', subject, ME.message);
+    end
+end
+
+fprintf('\nTotal: %d samples, %d features\n\n', ...
+    size(X_combined,1), size(X_combined,2));
+
+% Label encoding
+unique_labels = unique(y_combined);
+num_classes   = length(unique_labels);
+label_map     = containers.Map(unique_labels, 1:num_classes);
+
+y_numeric = zeros(length(y_combined), 1);
+for i = 1:length(y_combined)
+    y_numeric(i) = label_map(y_combined{i});
+end
+
+% Transition mask — based on label strings
+transition_mask_all = ismember(y_combined, TRANSITION_LABELS);
+steady_mask_all     = ~transition_mask_all;
+
+fprintf('Class distribution:\n');
+for i = 1:num_classes
+    n   = sum(y_numeric == i);
+    tag = '';
+    if ismember(unique_labels{i}, TRANSITION_LABELS)
+        tag = ' ← TRANSITION';
+    end
+    fprintf('  %-15s : %5d samples%s\n', unique_labels{i}, n, tag);
+end
+fprintf('\nTotal steady state : %d samples\n', sum(steady_mask_all));
+fprintf('Total transitions  : %d samples\n\n', sum(transition_mask_all));
+
+%% ========================================================
+%% STEP 3: CROSS VALIDATION — ALL 4 MODELS
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 3: LEAVE-ONE-TRIAL-OUT CV — ALL 4 MODELS\n');
+fprintf('=======================================================\n\n');
+
+unique_trials = unique(trial_combined);
+%num_folds     = length(unique_trials);
+num_folds = 5;
+
+% Storage for predictions from all models
+all_truth    = [];
+all_labels_truth = {};  % string labels for transition detection per fold
+
+all_pred_LDA = [];
+all_pred_SVM = [];
+all_pred_RF  = [];
+all_pred_DBN = [];
+all_pred_LDA_only = [];  % LDA without HMM (emission only)
+
+% SVM template — defined once
+svm_template = templateSVM('KernelFunction', 'linear', 'Standardize', false);
+
+tic;
+
+for fold = 1:num_folds
+    test_trial = unique_trials(fold);
+
+    if mod(fold, 5) == 0 || fold == 1
+        fprintf('[%s] Fold %d / %d  (%.1f sec)\n', ...
+            datetime('now','Format','HH:mm:ss'), fold, num_folds, toc);
+    end
+
+    train_mask = trial_combined ~= test_trial;
+    test_mask  = trial_combined == test_trial;
+
+    X_train = X_combined(train_mask, :);
+    y_train = y_numeric(train_mask);
+    X_test  = X_combined(test_mask,  :);
+    y_test  = y_numeric(test_mask);
+
+    % Labels for test fold (strings, for transition analysis)
+    labels_test = y_combined(test_mask);
+
+    % Normalise using training stats only
+    mu_tr    = mean(X_train);
+    sigma_tr = std(X_train);
+    sigma_tr(sigma_tr == 0) = 1;
+    X_train_n = (X_train - mu_tr) ./ sigma_tr;
+    X_test_n  = (X_test  - mu_tr) ./ sigma_tr;
+
+    %% ---- LDA ----
+    try
+        lda_model  = fitcdiscr(X_train_n, y_train, 'DiscrimType', 'linear');
+        pred_LDA   = predict(lda_model, X_test_n);
+    catch
+        pred_LDA = ones(size(y_test));
+    end
+
+    %% ---- SVM ----
+    try
+        svm_model = fitcecoc(X_train_n, y_train, ...
+                             'Learners', svm_template, ...
+                             'Coding',   'onevsone');
+        pred_SVM  = predict(svm_model, X_test_n);
+    catch
+        pred_SVM = ones(size(y_test));
+    end
+
+    %% ---- RF ----
+    try
+        % RF is scale-invariant — use raw (unnormalised) data
+        rf_model      = TreeBagger(NUM_TREES, X_train, y_train, ...
+                                   'Method',        'classification', ...
+                                   'OOBPrediction', 'off');
+        pred_RF_cell  = predict(rf_model, X_test);
+        pred_RF       = str2double(pred_RF_cell);
+    catch
+        pred_RF = ones(size(y_test));
+    end
+
+    %% ---- DBN (LDA emissions + HMM temporal filtering) ----
+    try
+        % Use same LDA model already trained above
+        [~, scores]    = predict(lda_model, X_test_n);
+        emission_probs = max(scores, 1e-10);
+        emission_probs = emission_probs ./ sum(emission_probs, 2);
+
+        % LDA-only prediction (no temporal filtering)
+        [~, pred_LDA_emit] = max(emission_probs, [], 2);
+
+        % Build transition matrix from training sequence
+        transition_matrix = ones(num_classes, num_classes);
+        train_trials_list = unique(trial_combined(train_mask));
+
+        for tt = 1:length(train_trials_list)
+            curr_mask = train_mask & (trial_combined == train_trials_list(tt));
+            seq = y_numeric(curr_mask);
+            for k = 1:length(seq)-1
+                transition_matrix(seq(k), seq(k+1)) = ...
+                    transition_matrix(seq(k), seq(k+1)) + 1;
+            end
+        end
+        transition_matrix = transition_matrix ./ sum(transition_matrix, 2);
+
+        % HMM forward filtering
+        T              = size(emission_probs, 1);
+        filtered_probs = zeros(T, num_classes);
+        filtered_probs(1,:) = emission_probs(1,:) ./ sum(emission_probs(1,:));
+
+        for t = 2:T
+            temporal_prior      = filtered_probs(t-1,:) * transition_matrix;
+            filtered_probs(t,:) = emission_probs(t,:) .* temporal_prior;
+            s = sum(filtered_probs(t,:));
+            if s < 1e-300
+                filtered_probs(t,:) = emission_probs(t,:);
+                s = sum(filtered_probs(t,:));
+            end
+            filtered_probs(t,:) = filtered_probs(t,:) ./ s;
+        end
+
+        [~, pred_DBN] = max(filtered_probs, [], 2);
+
+    catch
+        pred_DBN       = pred_LDA;
+        pred_LDA_emit  = pred_LDA;
+    end
+
+    % Accumulate
+    all_truth         = [all_truth;         y_test];
+    all_labels_truth  = [all_labels_truth;  labels_test];
+    all_pred_LDA      = [all_pred_LDA;      pred_LDA];
+    all_pred_SVM      = [all_pred_SVM;      pred_SVM];
+    all_pred_RF       = [all_pred_RF;        pred_RF];
+    all_pred_DBN      = [all_pred_DBN;      pred_DBN];
+    all_pred_LDA_only = [all_pred_LDA_only; pred_LDA_emit];
+end
+
+fprintf('\n[%s] CV complete! (%.1f sec)\n\n', ...
+    datetime('now','Format','HH:mm:ss'), toc);
+
+%% ========================================================
+%% STEP 4: SPLIT INTO STEADY STATE vs TRANSITION
+%% ========================================================
+
+fprintf('=======================================================\n');
+fprintf('STEP 4: RESULTS — STEADY STATE vs TRANSITION\n');
+fprintf('=======================================================\n\n');
+
+% Transition and steady state masks on collected predictions
+trans_mask  = ismember(all_labels_truth, TRANSITION_LABELS);
+steady_mask = ~trans_mask;
+
+models      = {'LDA', 'SVM', 'RF', 'DBN'};
+all_preds   = {all_pred_LDA, all_pred_SVM, all_pred_RF, all_pred_DBN};
+
+% Result tables
+overall_acc    = zeros(4,1);
+steady_acc     = zeros(4,1);
+transition_acc = zeros(4,1);
+
+fprintf('%-6s  %12s  %14s  %14s\n', ...
+    'Model', 'Overall (%)', 'Steady St. (%)', 'Transition (%)');
+fprintf('%s\n', repmat('-', 1, 55));
+
+for i = 1:4
+    pred = all_preds{i};
+
+    overall_acc(i)    = mean(pred == all_truth) * 100;
+    steady_acc(i)     = mean(pred(steady_mask)  == all_truth(steady_mask))  * 100;
+    transition_acc(i) = mean(pred(trans_mask)   == all_truth(trans_mask))   * 100;
+
+    fprintf('%-6s  %12.2f  %14.2f  %14.2f\n', ...
+        models{i}, overall_acc(i), steady_acc(i), transition_acc(i));
+end
+
+fprintf('%s\n\n', repmat('-', 1, 55));
+
+% DBN advantage at transitions
+dbn_idx = 4;
+fprintf('DBN advantage over others AT TRANSITIONS:\n');
+for i = 1:3
+    diff_val = transition_acc(dbn_idx) - transition_acc(i);
+    fprintf('  DBN vs %-4s : +%.2f%%\n', models{i}, diff_val);
+end
+
+fprintf('\nDBN advantage over others AT STEADY STATE:\n');
+for i = 1:3
+    diff_val = steady_acc(dbn_idx) - steady_acc(i);
+    fprintf('  DBN vs %-4s : %+.2f%%\n', models{i}, diff_val);
+end
+
+%% ========================================================
+%% STEP 5: SMOOTHNESS CHECK (DBN vs LDA)
+%% ========================================================
+
+fprintf('\n=======================================================\n');
+fprintf('STEP 5: TEMPORAL SMOOTHNESS CHECK\n');
+fprintf('=======================================================\n\n');
+
+smooth_LDA = sum(diff(all_pred_LDA) == 0);
+smooth_DBN = sum(diff(all_pred_DBN) == 0);
+total_transitions_pred = length(all_pred_DBN) - 1;
+
+fprintf('LDA smoothness : %d / %d  (%.1f%%)\n', ...
+    smooth_LDA, total_transitions_pred, 100*smooth_LDA/total_transitions_pred);
+fprintf('DBN smoothness : %d / %d  (%.1f%%)\n', ...
+    smooth_DBN, total_transitions_pred, 100*smooth_DBN/total_transitions_pred);
+fprintf('Smoothness gain: +%d predictions (%.1f%%)\n', ...
+    smooth_DBN - smooth_LDA, ...
+    100*(smooth_DBN - smooth_LDA)/total_transitions_pred);
+
+if smooth_DBN > smooth_LDA
+    fprintf('✓ DBN IS smoother — temporal filtering working\n\n');
+else
+    fprintf('⚠ DBN is NOT smoother\n\n');
+end
+
+%% ========================================================
+%% STEP 6: VISUALISATION
+%% ========================================================
+
+fprintf('STEP 6: PLOTTING\n\n');
+
+% ---- Plot 1: Grouped bar — steady vs transition per model ----
+figure('Name','Steady State vs Transition Accuracy','Position',[100 100 700 500]);
+
+bar_data = [steady_acc, transition_acc];
+b = bar(bar_data, 'grouped');
+b(1).FaceColor = [0.00 0.45 0.74];   % blue  = steady
+b(2).FaceColor = [0.85 0.33 0.10];   % orange = transition
+
+xticks(1:4);
+xticklabels(models);
+ylabel('Accuracy (%)');
+xlabel('Model');
+title(sprintf('Steady State vs Transition Accuracy\n(%s, DBN features, all subjects)', ground_to_test));
+legend({'Steady State', 'Transition'}, 'Location', 'southeast');
+ylim([0 105]);
+grid on;
+
+% Add value labels on bars
+for i = 1:4
+    text(i-0.15, steady_acc(i)+1,     sprintf('%.1f%%', steady_acc(i)), ...
+        'HorizontalAlignment','center','FontSize',9);
+    text(i+0.15, transition_acc(i)+1, sprintf('%.1f%%', transition_acc(i)), ...
+        'HorizontalAlignment','center','FontSize',9,'Color',[0.6 0 0]);
+end
+
+saveas(gcf, fullfile(output_folder, 'steady_vs_transition_accuracy.png'));
+
+% ---- Plot 2: DBN advantage bar ----
+figure('Name','DBN Advantage at Transitions','Position',[100 650 600 400]);
+
+dbn_advantage = transition_acc(4) - transition_acc(1:3);
+bar(dbn_advantage, 'FaceColor', [0.47 0.67 0.19]);
+xticks(1:3);
+xticklabels({'vs LDA', 'vs SVM', 'vs RF'});
+ylabel('Accuracy Gain (%)');
+title('DBN Advantage AT TRANSITION POINTS');
+yline(0, 'k--', 'LineWidth', 1.5);
+grid on;
+
+for i = 1:3
+    text(i, dbn_advantage(i)+0.3, sprintf('+%.2f%%', dbn_advantage(i)), ...
+        'HorizontalAlignment','center','FontSize',11,'FontWeight','bold');
+end
+
+saveas(gcf, fullfile(output_folder, 'dbn_transition_advantage.png'));
+
+% ---- Plot 3: Confusion matrix for DBN ----
+figure('Name','DBN Confusion Matrix');
+pred_label_strings  = unique_labels(all_pred_DBN);
+truth_label_strings = unique_labels(all_truth);
+confusionchart(truth_label_strings, pred_label_strings);
+title('DBN Confusion Matrix (all subjects)');
+saveas(gcf, fullfile(output_folder, 'DBN_confusion_matrix.png'));
+
+%% ========================================================
+%% STEP 7: SAVE RESULTS
+%% ========================================================
+
+fprintf('STEP 7: SAVING RESULTS\n\n');
+
+txt_out = fullfile(output_folder, 'hypothesis_test_results.txt');
+fid = fopen(txt_out, 'w');
+
+fprintf(fid, '=======================================================\n');
+fprintf(fid, 'HYPOTHESIS TEST RESULTS\n');
+fprintf(fid, 'Ground  : %s\n', ground_to_test);
+fprintf(fid, 'Features: DBN-selected (%d features)\n', length(selected_features));
+fprintf(fid, 'Subjects: %d\n', length(subjects));
+fprintf(fid, 'CV      : Leave-One-Trial-Out\n');
+fprintf(fid, '=======================================================\n\n');
+
+fprintf(fid, 'Transition classes : %s\n', strjoin(TRANSITION_LABELS, ', '));
+fprintf(fid, 'Steady state classes: all others\n\n');
+
+fprintf(fid, '%-6s  %12s  %14s  %14s\n', ...
+    'Model', 'Overall (%)', 'Steady St. (%)', 'Transition (%)');
+fprintf(fid, '%s\n', repmat('-',1,55));
+for i = 1:4
+    fprintf(fid, '%-6s  %12.2f  %14.2f  %14.2f\n', ...
+        models{i}, overall_acc(i), steady_acc(i), transition_acc(i));
+end
+fprintf(fid, '%s\n\n', repmat('-',1,55));
+
+fprintf(fid, 'DBN advantage AT TRANSITIONS:\n');
+for i = 1:3
+    fprintf(fid, '  DBN vs %-4s : %+.2f%%\n', models{i}, transition_acc(4)-transition_acc(i));
+end
+
+fprintf(fid, '\nDBN advantage AT STEADY STATE:\n');
+for i = 1:3
+    fprintf(fid, '  DBN vs %-4s : %+.2f%%\n', models{i}, steady_acc(4)-steady_acc(i));
+end
+
+fprintf(fid, '\nSmoothness:\n');
+fprintf(fid, '  LDA: %d / %d  (%.1f%%)\n', smooth_LDA, total_transitions_pred, ...
+    100*smooth_LDA/total_transitions_pred);
+fprintf(fid, '  DBN: %d / %d  (%.1f%%)\n', smooth_DBN, total_transitions_pred, ...
+    100*smooth_DBN/total_transitions_pred);
+
+fprintf(fid, '\nHYPOTHESIS VERDICT:\n');
+trans_gap = min(transition_acc(4) - transition_acc(1:3));
+steady_gap = max(abs(steady_acc(4) - steady_acc(1:3)));
+
+if trans_gap > 2 && steady_gap < 2
+    fprintf(fid, '✓ SUPPORTED: DBN significantly better at transitions (>2%% gap)\n');
+    fprintf(fid, '             but similar at steady state (<2%% gap)\n');
+elseif trans_gap > 0
+    fprintf(fid, '~ PARTIALLY SUPPORTED: DBN better at transitions but gap is small\n');
+else
+    fprintf(fid, '✗ NOT SUPPORTED: DBN shows no clear transition advantage\n');
+end
+
+fclose(fid);
+
+fprintf('Saved: %s\n', txt_out);
+fprintf('\n=======================================================\n');
+fprintf('HYPOTHESIS TEST COMPLETE!\n');
+fprintf('=======================================================\n');

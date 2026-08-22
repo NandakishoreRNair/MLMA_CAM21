@@ -1,0 +1,53 @@
+=======================================================
+HYPOTHESIS TEST: 4-PHASE GAIT TEMPORAL ADVANTAGE
+Ground       : levelground
+Phases       : 10% -> 35% -> 60% -> 85%
+Features     : DBN-selected (48 features)
+CV           : Per-subject Leave-One-Trial-Out
+Trans weight : 5
+Transition   : label at 10% differs from label at 85%
+=======================================================
+
+Test steps -- steady: 2266 | transition: 3130
+
+Model    Overall (%)    Steady St.(%)    Transition(%)
+-------------------------------------------------------
+LDA            70.18            74.23            67.25
+SVM            70.64            73.52            68.56
+RF             72.22            77.01            68.75
+DBN            73.57            78.55            69.97
+-------------------------------------------------------
+
+DBN advantage AT TRANSITIONS:
+  DBN vs LDA  : +2.72%
+  DBN vs SVM  : +1.41%
+  DBN vs RF   : +1.21%
+
+DBN advantage AT STEADY STATE:
+  DBN vs LDA  : +4.32%
+  DBN vs SVM  : +5.03%
+  DBN vs RF   : +1.54%
+
+Per-subject results:
+Subject   Overall LDA  Overall DBN   Steady LDA   Steady DBN    Trans LDA    Trans DBN
+--------------------------------------------------------------------------------
+ab07            73.54        78.12        74.07        80.00        72.36        73.98
+ab08            67.61        71.59        77.66        81.91        56.10        59.76
+ab09            60.51        65.82        67.50        71.67        51.81        58.55
+ab12            70.71        73.88        76.92        81.82        66.95        69.07
+ab13            66.36        71.21        73.65        78.38        60.44        65.38
+ab14            75.64        78.22        84.68        86.29        70.67        73.78
+ab17            65.71        71.43        58.43        66.29        69.11        73.82
+ab18            75.92        79.04        79.11        84.18        73.33        74.87
+ab19            72.17        73.15        72.66        74.82        71.91        72.28
+ab20            66.93        70.57        72.16        76.14        62.50        65.87
+ab21            75.34        75.62        78.23        79.84        73.86        73.44
+ab23            70.11        72.49        75.86        79.31        67.56        69.47
+ab24            75.00        78.37        78.36        81.34        72.97        76.58
+ab27            65.95        71.85        69.57        78.26        63.83        68.09
+ab28            70.52        72.56        76.30        79.19        66.79        68.28
+
+HYPOTHESIS VERDICT:
+PARTIALLY SUPPORTED:
+  DBN better at transitions (+1.21% min)
+  Steady state difference: 5.03%

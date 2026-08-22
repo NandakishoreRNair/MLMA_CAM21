@@ -1,0 +1,38 @@
+=======================================================
+SUBJECT-DEPENDENT HYPOTHESIS TEST RESULTS
+=======================================================
+
+Ground              : levelground
+Subjects             : 15
+DBN features         : 48
+Cross-validation     : Leave-One-Trial-Out
+Test trials          : first 5 ascending trials
+RF trees             : 30
+
+Steady-state definition:
+  steadyState_feat_last = 1 --> steady state
+  steadyState_feat_last = 0 --> transition
+
+FINAL RESULTS
+-------------------------------------------------------
+Model  |   Overall (%) |     Steady (%) | Transition (%)
+-------------------------------------------------------
+LDA    |         69.85 |          70.78 |          62.14
+SVM    |         72.09 |          72.55 |          68.30
+RF     |         75.63 |          77.98 |          56.02
+DBN    |         71.32 |          72.31 |          63.06
+-------------------------------------------------------
+
+DBN ADVANTAGE AT TRANSITIONS
+DBN vs LDA  : +0.93 percentage points
+DBN vs SVM  : -5.23 percentage points
+DBN vs RF   : +7.05 percentage points
+
+DBN ADVANTAGE AT STEADY STATE
+DBN vs LDA  : +1.53 percentage points
+DBN vs SVM  : -0.24 percentage points
+DBN vs RF   : -5.67 percentage points
+
+=======================================================
+END
+=======================================================

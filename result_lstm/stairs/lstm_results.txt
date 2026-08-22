@@ -1,0 +1,27 @@
+=======================================================
+LSTM vs DBN vs LDA RESULTS
+Ground   : stairs
+Subjects : 0
+LSTM     : hidden=64, layers=2, epochs=50
+CV       : Per-subject Leave-One-Trial-Out
+=======================================================
+
+Model   Overall(%)   Steady(%)   Transition(%)
+---------------------------------------------
+LDA            nan         nan             nan
+DBN            nan         nan             nan
+LSTM           nan         nan             nan
+
+LSTM advantage over DBN:
+  Overall    : +nan%
+  Steady     : +nan%
+  Transition : +nan%
+
+LSTM advantage over LDA:
+  Overall    : +nan%
+  Steady     : +nan%
+  Transition : +nan%
+
+Per-subject transition accuracy:
+Subject        LDA       DBN      LSTM
+-----------------------------------

@@ -30,7 +30,7 @@ clear all; close all; clc;
 %% SETTINGS
 %% ========================================================
 
-ground_to_test = 'levelground';
+ground_to_test = 'stair';
 
 phases     = {'10', '35', '60', '85'};
 num_phases = length(phases);

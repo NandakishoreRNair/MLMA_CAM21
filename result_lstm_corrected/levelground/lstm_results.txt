@@ -1,0 +1,42 @@
+=======================================================
+LSTM vs DBN vs LDA RESULTS
+ground   : levelground
+Subjects : 15
+LSTM     : hidden=64, layers=2, epochs=50
+CV       : Per-subject Leave-One-Trial-Out
+=======================================================
+
+Model   Overall(%)   Steady(%)   Transition(%)
+---------------------------------------------
+LDA          70.44       70.99           63.84
+DBN          77.46       77.48           77.04
+LSTM         81.47       80.41           93.66
+
+LSTM advantage over DBN:
+  Overall    : +4.01%
+  Steady     : +2.93%
+  Transition : +16.62%
+
+LSTM advantage over LDA:
+  Overall    : +11.04%
+  Steady     : +9.42%
+  Transition : +29.82%
+
+Per-subject transition accuracy:
+Subject        LDA       DBN      LSTM
+-----------------------------------
+ab07         70.00     66.67     90.00
+ab08         53.33     60.00     93.33
+ab09         30.00     56.67     80.00
+ab12         61.29     77.42     96.77
+ab13         57.14     75.00     96.43
+ab14         80.00     86.67     93.33
+ab17         68.18     81.82     95.45
+ab18         74.19     90.32     96.77
+ab19         46.67     76.67     93.33
+ab20         57.14     75.00    100.00
+ab21         89.66     82.76     86.21
+ab23         63.33     80.00     96.67
+ab24         70.00     83.33    100.00
+ab27         66.67     86.67     93.33
+ab28         70.00     76.67     93.33

@@ -10,17 +10,17 @@ Model   Overall(%)   Steady(%)   Transition(%)
 ---------------------------------------------
 LDA          87.20       87.06           83.06
 DBN          91.51       91.43           86.54
-LSTM         96.42       96.71           75.38
+LSTM         96.45       96.75           77.40
 
 LSTM advantage over DBN:
-  Overall    : +4.91%
-  Steady     : +5.29%
-  Transition : -11.15%
+  Overall    : +4.95%
+  Steady     : +5.32%
+  Transition : -9.14%
 
 LSTM advantage over LDA:
-  Overall    : +9.22%
-  Steady     : +9.65%
-  Transition : -7.67%
+  Overall    : +9.25%
+  Steady     : +9.69%
+  Transition : -5.66%
 
 Per-subject transition accuracy:
 Subject        LDA       DBN      LSTM
@@ -28,14 +28,14 @@ Subject        LDA       DBN      LSTM
 ab07        100.00    100.00    100.00
 ab08        100.00    100.00    100.00
 ab09        100.00    100.00    100.00
-ab12         60.00     80.00     20.00
-ab13         80.00     80.00     50.00
+ab12         60.00     80.00     60.00
+ab13         80.00     80.00     60.00
 ab14        100.00    100.00    100.00
 ab17           nan       nan       nan
 ab18        100.00    100.00    100.00
-ab19         88.89     94.44     72.22
-ab20         92.86     92.86     92.86
-ab21         72.73     90.91     63.64
+ab19         88.89     94.44     66.67
+ab20         92.86     92.86     85.71
+ab21         72.73     90.91     54.55
 ab23         85.00     90.00     90.00
 ab24        100.00    100.00    100.00
 ab27         50.00     50.00      0.00

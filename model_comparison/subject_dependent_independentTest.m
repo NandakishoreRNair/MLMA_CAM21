@@ -23,7 +23,7 @@ clear all; close all; clc;
 %% SETTINGS
 %% ========================================================
 
-ground_to_test = 'stair';
+ground_to_test = 'levelground';
 
 phases     = {'10', '35', '60', '85'};
 num_phases = length(phases);
@@ -34,7 +34,7 @@ for p = 1:num_phases
         ground_to_test, phases{p});
 end
 
-output_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/result_subj_dep_indep/%s/', ...
+output_folder = sprintf('/home/eeiww/ut55iqoh/MLMA_CAM21/result_subj_dep_indep_corrected/%s/', ...
     ground_to_test);
 if ~exist(output_folder, 'dir')
     mkdir(output_folder);
@@ -161,9 +161,13 @@ for subj_idx = 1:length(subjects)
             continue;
         end
 
-        lbl_10  = lbl_s{1};
         lbl_85  = lbl_s{4};
-        trans_s = ~strcmp(lbl_10, lbl_85);
+        trans_classes = {'walk-stairascent', 'walk-stairdescent', ...
+                         'stairascent-walk', 'stairdescent-walk', ...
+                         'stand-walk', 'walk-stand', ...
+                         'walk-rampascent', 'walk-rampdescent', ...
+                         'rampascent-walk', 'rampdescent-walk'};
+        trans_s = ismember(lbl_85, trans_classes);
 
         subj_X{subj_idx}      = X_s;
         subj_labels{subj_idx} = lbl_s;

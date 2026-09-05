@@ -31,7 +31,7 @@ clear all; close all; clc;
 %% SETTINGS
 %% ========================================================
 
-ground_to_test = 'levelground';
+ground_to_test = 'ramp';
 
 phases     = {'10', '35', '60', '85'};
 num_phases = length(phases);
@@ -600,7 +600,7 @@ title(sprintf(['Steady State vs Transition Accuracy\n' ...
     '(%s | 4-phase DBN chain | T-weight=%d)'], ...
     ground_to_test, TRANS_WEIGHT));
 legend({'Steady steps ', ...
-        'Transition steps '}, 'Location','southeast');
+        'Transition steps (label changes)'}, 'Location','southeast');
 ylim([0 108]); grid on;
 for i = 1:4
     text(i-0.15, steady_acc(i)+1, sprintf('%.1f%%',steady_acc(i)), ...

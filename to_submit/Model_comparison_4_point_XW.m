@@ -463,7 +463,7 @@ for subj_idx = 1:length(subjects)
     all_pred_DBN   = [all_pred_DBN;   subj_dbn_p];
 end
 
-fprintf('\nall subjects done! (%.1f sec)\n\n', toc);
+fprintf('\nall subjects done (%.1f sec)\n\n', toc);
 
 % aggregate results across all subjects
 trans_mask  = logical(all_trans_mask);
@@ -616,67 +616,4 @@ end
 fclose(fid);
 fprintf('results saved to %s\n', txt_out);
 
-% statistical significance tests (DBN vs LDA)
-fprintf('\nstatistical tests (DBN vs LDA)...\n\n');
-
-valid_idx = find(valid_subj);
-lda_t = subj_trans_lda(valid_idx);
-dbn_t = subj_trans_dbn(valid_idx);
-lda_s = subj_steady_lda(valid_idx);
-dbn_s = subj_steady_dbn(valid_idx);
-
-valid_mask = ~isnan(lda_t) & ~isnan(dbn_t);
-lda_t = lda_t(valid_mask);
-dbn_t = dbn_t(valid_mask);
-lda_s = lda_s(valid_mask);
-dbn_s = dbn_s(valid_mask);
-n     = sum(valid_mask);
-
-diff_t = dbn_t - lda_t;
-fprintf('transitions - mean diff: %+.2f%%, DBN wins: %d/%d subjects\n', mean(diff_t), sum(diff_t>0), n);
-
-[h_t, p_t, ~, stats_t] = ttest(dbn_t, lda_t);
-fprintf('t-test: t=%.4f, p=%.4f\n', stats_t.tstat, p_t);
-
-[p_w, h_w] = signrank(dbn_t, lda_t);
-fprintf('wilcoxon: p=%.4f\n', p_w);
-
-cohens_d_t = mean(diff_t) / std(diff_t);
-fprintf('cohens d: %.4f\n\n', cohens_d_t);
-
-diff_s = dbn_s - lda_s;
-fprintf('steady state - mean diff: %+.2f%%, DBN wins: %d/%d subjects\n', mean(diff_s), sum(diff_s>0), n);
-
-[h_s, p_s, ~, stats_s] = ttest(dbn_s, lda_s);
-fprintf('t-test: t=%.4f, p=%.4f\n', stats_s.tstat, p_s);
-
-[p_ws, h_ws] = signrank(dbn_s, lda_s);
-fprintf('wilcoxon: p=%.4f\n', p_ws);
-
-cohens_d_s = mean(diff_s) / std(diff_s);
-fprintf('cohens d: %.4f\n\n', cohens_d_s);
-
-% save stats
-stats_out = fullfile(output_folder, 'statistical_tests.txt');
-fid = fopen(stats_out, 'w');
-
-if h_t == 1, sig_t = 'SIGNIFICANT'; else, sig_t = 'not significant'; end
-if h_w == 1, sig_w = 'SIGNIFICANT'; else, sig_w = 'not significant'; end
-if h_s == 1, sig_s = 'SIGNIFICANT'; else, sig_s = 'not significant'; end
-if h_ws == 1, sig_ws = 'SIGNIFICANT'; else, sig_ws = 'not significant'; end
-
-fprintf(fid, 'statistical tests - %s | %d subjects\n\n', ground_to_test, n);
-fprintf(fid, 'transitions (DBN vs LDA):\n');
-fprintf(fid, '  mean diff: %+.2f%%\n', mean(diff_t));
-fprintf(fid, '  t-test p: %.4f (%s)\n', p_t, sig_t);
-fprintf(fid, '  wilcoxon p: %.4f (%s)\n', p_w, sig_w);
-fprintf(fid, '  cohens d: %.4f\n\n', cohens_d_t);
-
-fprintf(fid, 'steady state (DBN vs LDA):\n');
-fprintf(fid, '  mean diff: %+.2f%%\n', mean(diff_s));
-fprintf(fid, '  t-test p: %.4f (%s)\n', p_s, sig_s);
-fprintf(fid, '  wilcoxon p: %.4f (%s)\n', p_ws, sig_ws);
-fprintf(fid, '  cohens d: %.4f\n\n', cohens_d_s);
-
-fclose(fid);
-fprintf('stats saved\ndone!\n');
+fprintf('done');
